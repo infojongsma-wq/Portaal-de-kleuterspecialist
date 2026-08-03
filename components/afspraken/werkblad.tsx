@@ -38,13 +38,10 @@ export function Werkblad({
   const [afspraakId, setAfspraakId] = React.useState<string | null>(null);
   const [gekozenDatum, setGekozenDatum] = React.useState<string | null>(null);
 
+  // Is de afspraak intussen verwijderd, dan levert dit `null` op en toont het
+  // formulier vanzelf weer een lege invoer.
   const gekozenAfspraak =
     afspraken.find((afspraak) => afspraak.id === afspraakId) ?? null;
-
-  // De afspraak kan intussen zijn verwijderd; dan terug naar een leeg formulier.
-  React.useEffect(() => {
-    if (afspraakId && !gekozenAfspraak) setAfspraakId(null);
-  }, [afspraakId, gekozenAfspraak]);
 
   const alleAfspraken = React.useMemo<AfspraakInvoer[]>(
     () =>

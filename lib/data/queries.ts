@@ -6,7 +6,12 @@ import {
 } from "@/lib/uren";
 import { berekenDagen, totaalUren } from "@/lib/uren";
 import { declarabeleReistijdUren } from "@/lib/uren";
-import type { AfspraakInvoer, Telwijze, UrenregelInvoer } from "@/lib/uren";
+import type {
+  AfspraakInvoer,
+  Telwijze,
+  UrenCategorie,
+  UrenregelInvoer,
+} from "@/lib/uren";
 import { opslag } from "./opslag";
 import type {
   Activiteitsoort,
@@ -222,6 +227,78 @@ export function urenInPeriode(
   }).filter((dag) => dag.datum >= vanaf && dag.datum <= totEnMet);
 
   return totaalUren(dagen);
+}
+
+/**
+ * Uitsplitsing per categorie over een periode (SPEC.md 6.6).
+ * Locatie-, voorbereidings- en reistijduren komen uit de afspraken; de overige
+ * categorieën uit de handmatige urenregels.
+ */
+export function urenPerCategorie(
+  medewerkerId: string,
+  vanaf: string,
+  totEnMet: string,
+  telwijze: Telwijze,
+): Array<{ categorie: UrenCategorie; uren: number }> {
+  const instellingen = haalInstellingen();
+  const afspraken = haalAfspraken(medewerkerId);
+  const totalen = new Map<UrenCategorie, number>();
+
+  function tel(categorie: UrenCategorie, uren: number) {
+    if (uren <= 0) return;
+    totalen.set(categorie, (totalen.get(categorie) ?? 0) + uren);
+  }
+
+  for (const afspraak of afspraken) {
+    if (
+      afspraak.datum >= vanaf &&
+      afspraak.datum <= totEnMet &&
+      teltLocatieUren(afspraak.status, telwijze)
+    ) {
+      tel("op_locatie", afspraak.urenOpLocatie);
+    }
+    if (
+      afspraak.voorbereidingDatum >= vanaf &&
+      afspraak.voorbereidingDatum <= totEnMet &&
+      teltVoorbereidingUren(
+        afspraak.status,
+        afspraak.voorbereidingGedaan,
+        telwijze,
+      )
+    ) {
+      tel("voorbereiding", afspraak.urenVoorbereiding);
+    }
+  }
+
+  // Reistijd wordt per dag bepaald: één keer de verste bestemming, één keer de
+  // eigen tijd eraf.
+  const reisPerDag = new Map<string, number>();
+  for (const afspraak of afspraken) {
+    if (afspraak.datum < vanaf || afspraak.datum > totEnMet) continue;
+    if (!teltReistijd(afspraak.status, telwijze)) continue;
+    const minuten = afspraak.reistijdEnkelMinuten ?? 0;
+    reisPerDag.set(
+      afspraak.datum,
+      Math.max(reisPerDag.get(afspraak.datum) ?? 0, minuten),
+    );
+  }
+  for (const minuten of reisPerDag.values()) {
+    if (minuten > 0) {
+      tel(
+        "reistijd",
+        declarabeleReistijdUren(minuten, instellingen.eigenReistijdUrenPerDag),
+      );
+    }
+  }
+
+  for (const regel of haalHandmatigeUrenregels(medewerkerId)) {
+    if (regel.datum < vanaf || regel.datum > totEnMet) continue;
+    tel(regel.categorie, regel.uren);
+  }
+
+  return [...totalen.entries()]
+    .map(([categorie, uren]) => ({ categorie, uren: Math.round(uren * 100) / 100 }))
+    .sort((a, b) => b.uren - a.uren);
 }
 
 /** De jaarnormbalans van een medewerker (SPEC.md 5.4). */

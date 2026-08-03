@@ -103,7 +103,6 @@ export function KlantKiezer({
           type="button"
           onClick={() => setOpen(true)}
           aria-haspopup="listbox"
-          aria-invalid={foutmelding ? true : undefined}
           className={cn(
             "flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             foutmelding && "border-destructive",

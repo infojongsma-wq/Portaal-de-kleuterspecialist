@@ -25,15 +25,28 @@ export function Datumveld({
   const [tekst, setTekst] = React.useState(() =>
     waarde ? formatteerDatum(waarde) : "",
   );
+  const [vorigeWaarde, setVorigeWaarde] = React.useState(waarde);
 
-  // De waarde kan van buitenaf veranderen, bijvoorbeeld als er in de agenda
-  // een andere afspraak wordt aangeklikt.
-  React.useEffect(() => {
-    setTekst(waarde ? formatteerDatum(waarde) : "");
-  }, [waarde]);
+  // De waarde kan van buitenaf veranderen, bijvoorbeeld als er in de agenda een
+  // andere afspraak wordt aangeklikt. Dat bijstellen gebeurt tijdens het
+  // renderen en niet in een effect, anders volgt er een tweede renderronde.
+  //
+  // Komt de nieuwe waarde uit onze eigen invoer, dan blijft de tekst staan
+  // zoals die is getypt — anders zou `1-3-2027` halverwege omspringen naar
+  // `01-03-2027` en de cursor meenemen.
+  if (waarde !== vorigeWaarde) {
+    setVorigeWaarde(waarde);
+    if (waarde !== (leesNederlandseDatum(tekst) ?? "")) {
+      setTekst(waarde ? formatteerDatum(waarde) : "");
+    }
+  }
 
   function bijWijziging(nieuweTekst: string) {
     setTekst(nieuweTekst);
+    if (nieuweTekst.trim() === "") {
+      onWijzig("");
+      return;
+    }
     const iso = leesNederlandseDatum(nieuweTekst);
     if (iso) onWijzig(iso);
   }
