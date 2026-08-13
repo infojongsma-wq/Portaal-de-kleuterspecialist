@@ -59,7 +59,24 @@ export function haalInstellingen(): Instellingen {
 export function haalActiviteitsoorten(): Activiteitsoort[] {
   return opslag()
     .activiteitsoorten.filter((soort) => soort.actief)
-    .sort((a, b) => a.volgorde - b.volgorde);
+    .sort((a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"));
+}
+
+/** Ook de soorten die op non-actief staan; voor het beheerdersportaal. */
+export function haalAlleActiviteitsoorten(): Activiteitsoort[] {
+  return [...opslag().activiteitsoorten].sort(
+    (a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"),
+  );
+}
+
+/**
+ * De soorten die de medewerker kan kiezen: alleen die met vaste uren.
+ *
+ * Soorten met `handmatigeUren` vragen om zelf ingevulde uren, en die velden
+ * ziet de medewerker niet meer. Ze blijven wel bestaan voor het beheer.
+ */
+export function haalTrainingsoorten(): Activiteitsoort[] {
+  return haalActiviteitsoorten().filter((soort) => !soort.handmatigeUren);
 }
 
 export function haalKlanten(): Klant[] {
@@ -107,7 +124,27 @@ export function haalNietInzetbareDatums(): string[] {
 export function haalAfspraken(medewerkerId: string): Afspraak[] {
   return opslag()
     .afspraken.filter((afspraak) => afspraak.medewerkerId === medewerkerId)
-    .sort((a, b) => a.datum.localeCompare(b.datum));
+    .sort(opDatum);
+}
+
+/** Sorteert op datum; afspraken zonder datum komen achteraan. */
+export function opDatum(
+  a: { datum: string | null },
+  b: { datum: string | null },
+): number {
+  if (a.datum === b.datum) return 0;
+  if (!a.datum) return 1;
+  if (!b.datum) return -1;
+  return a.datum.localeCompare(b.datum);
+}
+
+/** Valt een datum binnen een periode? Een lege datum nooit. */
+function binnenPeriode(
+  datum: string | null,
+  vanaf: string,
+  totEnMet: string,
+): boolean {
+  return datum !== null && datum >= vanaf && datum <= totEnMet;
 }
 
 export function haalAfspraak(afspraakId: string): Afspraak | null {
@@ -144,6 +181,19 @@ export function haalAfsprakenVoorKlant(klantId: string): AfspraakMetContext[] {
   return haalAfsprakenMetContext(huidigeMedewerker().id).filter(
     (afspraak) => afspraak.klantId === klantId,
   );
+}
+
+/**
+ * De trainingen die met een school zijn afgesproken: alles wat nog loopt, met
+ * of zonder datum. Geannuleerde en verzette afspraken vallen eruit, voltooide
+ * ook — die staan onder "uitgevoerd".
+ */
+export function haalAfgesprokenTrainingen(
+  klantId: string,
+): AfspraakMetContext[] {
+  return haalAfsprakenVoorKlant(klantId)
+    .filter((afspraak) => afspraak.status === "gepland")
+    .sort(opDatum);
 }
 
 export function haalUrenregels(medewerkerId: string): Urenregel[] {
@@ -209,9 +259,8 @@ export function urenInPeriode(
     .map(naarAfspraakInvoer)
     .filter(
       (afspraak) =>
-        (afspraak.datum >= vanaf && afspraak.datum <= totEnMet) ||
-        (afspraak.voorbereidingDatum >= vanaf &&
-          afspraak.voorbereidingDatum <= totEnMet),
+        binnenPeriode(afspraak.datum, vanaf, totEnMet) ||
+        binnenPeriode(afspraak.voorbereidingDatum, vanaf, totEnMet),
     );
 
   const urenregels = haalHandmatigeUrenregels(medewerkerId)
@@ -251,15 +300,13 @@ export function urenPerCategorie(
 
   for (const afspraak of afspraken) {
     if (
-      afspraak.datum >= vanaf &&
-      afspraak.datum <= totEnMet &&
+      binnenPeriode(afspraak.datum, vanaf, totEnMet) &&
       teltLocatieUren(afspraak.status, telwijze)
     ) {
       tel("op_locatie", afspraak.urenOpLocatie);
     }
     if (
-      afspraak.voorbereidingDatum >= vanaf &&
-      afspraak.voorbereidingDatum <= totEnMet &&
+      binnenPeriode(afspraak.voorbereidingDatum, vanaf, totEnMet) &&
       teltVoorbereidingUren(
         afspraak.status,
         afspraak.voorbereidingGedaan,
@@ -274,13 +321,11 @@ export function urenPerCategorie(
   // eigen tijd eraf.
   const reisPerDag = new Map<string, number>();
   for (const afspraak of afspraken) {
-    if (afspraak.datum < vanaf || afspraak.datum > totEnMet) continue;
+    if (!binnenPeriode(afspraak.datum, vanaf, totEnMet)) continue;
     if (!teltReistijd(afspraak.status, telwijze)) continue;
+    const datum = afspraak.datum!;
     const minuten = afspraak.reistijdEnkelMinuten ?? 0;
-    reisPerDag.set(
-      afspraak.datum,
-      Math.max(reisPerDag.get(afspraak.datum) ?? 0, minuten),
-    );
+    reisPerDag.set(datum, Math.max(reisPerDag.get(datum) ?? 0, minuten));
   }
   for (const minuten of reisPerDag.values()) {
     if (minuten > 0) {

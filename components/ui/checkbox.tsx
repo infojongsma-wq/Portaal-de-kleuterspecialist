@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Checkbox as CheckboxPrimitive } from "radix-ui";
-import { CheckIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,10 +19,11 @@ function Checkbox({
       )}
       {...props}
     >
+      {/* Een kruisje in het vakje, zoals op een papieren formulier. */}
       <CheckboxPrimitive.Indicator
         className={cn("flex items-center justify-center text-current")}
       >
-        <CheckIcon className="size-3.5" />
+        <XIcon className="size-3.5" strokeWidth={3} />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>
   );

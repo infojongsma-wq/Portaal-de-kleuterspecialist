@@ -131,8 +131,10 @@ export function berekenDagen(
 ): DagUitkomst[] {
   const datums = new Set<string>();
   for (const afspraak of invoer.afspraken) {
-    datums.add(afspraak.datum);
-    datums.add(afspraak.voorbereidingDatum);
+    // Afspraken die nog ingepland moeten worden hebben geen datum en leveren
+    // dus ook geen dag op.
+    if (afspraak.datum) datums.add(afspraak.datum);
+    if (afspraak.voorbereidingDatum) datums.add(afspraak.voorbereidingDatum);
   }
   for (const regel of invoer.handmatigeUrenregels) {
     datums.add(regel.datum);

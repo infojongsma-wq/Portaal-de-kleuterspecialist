@@ -71,8 +71,10 @@ export default async function OverzichtPagina({
   const soorten = haalActiviteitsoorten();
 
   const afspraken = haalAfsprakenMetContext(medewerker.id)
-    .filter((afspraak) => !vanaf || afspraak.datum >= vanaf)
-    .filter((afspraak) => !totEnMet || afspraak.datum <= totEnMet)
+    // Een afspraak zonder datum valt buiten elke periode; is er geen
+    // periodefilter, dan hoort hij er wel gewoon bij te staan.
+    .filter((afspraak) => !vanaf || (afspraak.datum ?? "") >= vanaf)
+    .filter((afspraak) => !totEnMet || (!!afspraak.datum && afspraak.datum <= totEnMet))
     .filter((afspraak) => !klantId || afspraak.klantId === klantId)
     .filter((afspraak) => !soortId || afspraak.activiteitsoortId === soortId)
     .filter((afspraak) => !status || afspraak.status === status)
@@ -176,7 +178,13 @@ export default async function OverzichtPagina({
                 return (
                   <TableRow key={afspraak.id}>
                     <TableCell className="whitespace-nowrap tabular-nums">
-                      {formatteerDatum(afspraak.datum)}
+                      {afspraak.datum ? (
+                        formatteerDatum(afspraak.datum)
+                      ) : (
+                        <span className="text-muted-foreground">
+                          Nog in te plannen
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="font-medium">{afspraak.klant.naam}</span>
@@ -253,6 +261,9 @@ function vergelijker(veld: Sorteerveld, aflopend: boolean) {
         case "status":
           return a.status.localeCompare(b.status, "nl");
         default:
+          // Afspraken zonder datum achteraan.
+          if (!a.datum) return b.datum ? 1 : 0;
+          if (!b.datum) return -1;
           return a.datum.localeCompare(b.datum);
       }
     })();

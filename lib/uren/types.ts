@@ -27,10 +27,16 @@ export type Telwijze = "gepland" | "gerealiseerd";
 /** De velden van een afspraak die de urenberekening nodig heeft. */
 export interface AfspraakInvoer {
   id: string;
-  /** Dag van het bezoek, ISO `jjjj-mm-dd`. */
-  datum: string;
+  /**
+   * Dag van het bezoek, ISO `jjjj-mm-dd`.
+   *
+   * `null` betekent "nog in te plannen": de school heeft de training
+   * afgesproken maar er staat nog geen datum. Zulke afspraken tellen nergens
+   * mee — niet in gepland en niet in gerealiseerd — tot er een datum is.
+   */
+  datum: string | null;
   /** Dag waarop de voorbereiding wordt geboekt, ISO `jjjj-mm-dd`. */
-  voorbereidingDatum: string;
+  voorbereidingDatum: string | null;
   /** Overgenomen uit de activiteitsoort. */
   urenOpLocatie: number;
   /** Overgenomen uit de activiteitsoort. */

@@ -1,12 +1,11 @@
 import { Werkblad } from "@/components/afspraken/werkblad";
 import { Hoofdnavigatie } from "@/components/hoofdnavigatie";
 import {
-  haalActiviteitsoorten,
   haalAfsprakenMetContext,
   haalContactpersonen,
-  haalInstellingen,
   haalKlanten,
   haalNietInzetbareDagen,
+  haalTrainingsoorten,
   huidigeMedewerker,
 } from "@/lib/data/queries";
 
@@ -30,8 +29,7 @@ export default function AfsprakenPagina() {
         <Werkblad
           klanten={haalKlanten()}
           contactpersonen={haalContactpersonen()}
-          activiteitsoorten={haalActiviteitsoorten()}
-          instellingen={haalInstellingen()}
+          trainingsoorten={haalTrainingsoorten()}
           afspraken={haalAfsprakenMetContext(medewerker.id)}
           nietInzetbareDagen={haalNietInzetbareDagen()}
         />

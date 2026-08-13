@@ -12,8 +12,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import {
-  haalActiviteitsoorten,
+  haalAlleActiviteitsoorten,
   haalContract,
   haalInstellingen,
   haalNietInzetbareDagen,
@@ -258,53 +259,18 @@ export default function BeheerPagina() {
         </Card>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          {/* Activiteitsoorten */}
+          {/* Soorten trainingen */}
           <Card className="p-0">
             <CardHeader>
-              <CardTitle>Activiteitsoorten</CardTitle>
+              <CardTitle>Soorten trainingen</CardTitle>
               <p className="text-sm text-muted-foreground">
                 Deze uren bepalen wat een afspraak oplevert. Ze staan nergens in
-                de code.
+                de code, en de medewerker vult ze niet in. Een wijziging geldt
+                vooruit: bestaande afspraken houden de uren waarmee ze zijn
+                vastgelegd.
               </p>
             </CardHeader>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Soort</TableHead>
-                  <TableHead className="text-right">Op locatie</TableHead>
-                  <TableHead className="text-right">Voorbereiding</TableHead>
-                  <TableHead className="text-right">Totaal</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {haalActiviteitsoorten().map((soort) => (
-                  <TableRow key={soort.id}>
-                    <TableCell>
-                      <span className="flex items-center gap-2">
-                        <span
-                          className="size-2.5 rounded-full"
-                          style={{ backgroundColor: soort.kleur }}
-                          aria-hidden
-                        />
-                        {soort.naam}
-                        {soort.handmatigeUren ? (
-                          <Badge variant="outline">handmatig</Badge>
-                        ) : null}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatteerUren(soort.urenOpLocatie)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatteerUren(soort.urenVoorbereiding)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium tabular-nums">
-                      {formatteerUren(soort.urenOpLocatie + soort.urenVoorbereiding)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SoortenBeheer soorten={haalAlleActiviteitsoorten()} />
           </Card>
 
           {/* Instellingen */}
@@ -384,8 +350,8 @@ export default function BeheerPagina() {
                 Supabase Auth (fase 1 en 4).
               </li>
               <li>
-                Activiteitsoorten, instellingen en niet-inzetbare dagen bewerken
-                — nu alleen te lezen.
+                Instellingen en niet-inzetbare dagen bewerken — nu alleen te
+                lezen. Soorten trainingen zijn hierboven wél te beheren.
               </li>
               <li>Wijzigingslog — de databasetriggers staan klaar in de migraties.</li>
               <li>Export naar Excel en PDF — fase 4.</li>

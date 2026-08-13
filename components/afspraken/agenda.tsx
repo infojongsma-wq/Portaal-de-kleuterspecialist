@@ -47,31 +47,39 @@ export function Agenda({
 
   const gebeurtenissen = React.useMemo<EventInput[]>(
     () =>
-      afspraken.map((afspraak) => {
+      afspraken.flatMap((afspraak) => {
+        // Een training die nog ingepland moet worden hoort niet in de agenda;
+        // die staat in de lijst per school.
+        if (!afspraak.datum) return [];
+
         const heeftTijd = Boolean(afspraak.starttijd);
         const geselecteerd = afspraak.id === geselecteerdeAfspraakId;
         const vervallen =
           afspraak.status === "geannuleerd" || afspraak.status === "verzet";
 
-        return {
-          id: afspraak.id,
-          title: `${afspraak.klant.naam} — ${afspraak.titel}`,
-          start: heeftTijd
-            ? `${afspraak.datum}T${afspraak.starttijd}`
-            : afspraak.datum,
-          end:
-            heeftTijd && afspraak.eindtijd
-              ? `${afspraak.datum}T${afspraak.eindtijd}`
-              : undefined,
-          allDay: !heeftTijd,
-          backgroundColor: afspraak.activiteitsoort.kleur,
-          borderColor: geselecteerd ? "#111827" : afspraak.activiteitsoort.kleur,
-          textColor: "#ffffff",
-          classNames: [
-            vervallen ? "line-through opacity-60" : "",
-            geselecteerd ? "ring-2 ring-offset-1 ring-foreground" : "",
-          ].filter(Boolean),
-        };
+        return [
+          {
+            id: afspraak.id,
+            title: `${afspraak.klant.naam} — ${afspraak.titel}`,
+            start: heeftTijd
+              ? `${afspraak.datum}T${afspraak.starttijd}`
+              : afspraak.datum,
+            end:
+              heeftTijd && afspraak.eindtijd
+                ? `${afspraak.datum}T${afspraak.eindtijd}`
+                : undefined,
+            allDay: !heeftTijd,
+            backgroundColor: afspraak.activiteitsoort.kleur,
+            borderColor: geselecteerd
+              ? "#111827"
+              : afspraak.activiteitsoort.kleur,
+            textColor: "#ffffff",
+            classNames: [
+              vervallen ? "line-through opacity-60" : "",
+              geselecteerd ? "ring-2 ring-offset-1 ring-foreground" : "",
+            ].filter(Boolean),
+          },
+        ];
       }),
     [afspraken, geselecteerdeAfspraakId],
   );

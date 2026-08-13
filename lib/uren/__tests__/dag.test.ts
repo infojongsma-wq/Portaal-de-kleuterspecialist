@@ -193,3 +193,40 @@ describe("meerdere dagen optellen", () => {
     expect(totaalUren(dagen)).toBe(5.0);
   });
 });
+
+describe("afspraken die nog ingepland moeten worden", () => {
+  const nogInTePlannen = maakAfspraak({
+    id: "zonder-datum",
+    datum: null,
+    voorbereidingDatum: null,
+    urenOpLocatie: 3.0,
+    urenVoorbereiding: 3.0,
+    reistijdEnkelMinuten: 90,
+  });
+
+  it("tellen op geen enkele dag mee", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [nogInTePlannen],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dag.totaalUren).toBe(0);
+    expect(dag.reistijdUren).toBe(0);
+  });
+
+  it("leveren geen lege dagen op in een periodeberekening", () => {
+    const dagen = berekenDagen({
+      afspraken: [
+        nogInTePlannen,
+        maakAfspraak({ id: "wel-datum", datum: "2027-03-10" }),
+      ],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dagen.map((dag) => dag.datum)).toEqual(["2027-03-10"]);
+    expect(totaalUren(dagen)).toBe(6.0);
+  });
+});

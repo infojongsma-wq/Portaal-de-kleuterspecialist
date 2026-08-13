@@ -4,34 +4,31 @@ import * as React from "react";
 
 import { AfspraakFormulier } from "@/components/afspraken/afspraak-formulier";
 import { Agenda } from "@/components/afspraken/agenda";
-import { Card } from "@/components/ui/card";
+import { Trainingslijst } from "@/components/afspraken/trainingslijst";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type {
   Activiteitsoort,
   AfspraakMetContext,
   Contactpersoon,
-  Instellingen,
   Klant,
   NietInzetbareDag,
 } from "@/lib/data/types";
-import type { AfspraakInvoer } from "@/lib/uren";
 
 /**
- * Tweekolomsindeling van het hoofdscherm (SPEC.md 6.2): links het formulier,
- * rechts de permanente agenda. Deze component houdt bij welke afspraak of
- * datum is aangeklikt en geeft dat door aan het formulier.
+ * Tweekolomsindeling van het hoofdscherm: links het formulier, rechts de
+ * permanente agenda. Deze component houdt bij welke afspraak of datum is
+ * aangeklikt en geeft dat door aan het formulier.
  */
 export function Werkblad({
   klanten,
   contactpersonen,
-  activiteitsoorten,
-  instellingen,
+  trainingsoorten,
   afspraken,
   nietInzetbareDagen,
 }: {
   klanten: Klant[];
   contactpersonen: Contactpersoon[];
-  activiteitsoorten: Activiteitsoort[];
-  instellingen: Instellingen;
+  trainingsoorten: Activiteitsoort[];
   afspraken: AfspraakMetContext[];
   nietInzetbareDagen: NietInzetbareDag[];
 }) {
@@ -43,20 +40,20 @@ export function Werkblad({
   const gekozenAfspraak =
     afspraken.find((afspraak) => afspraak.id === afspraakId) ?? null;
 
-  const alleAfspraken = React.useMemo<AfspraakInvoer[]>(
-    () =>
-      afspraken.map((afspraak) => ({
-        id: afspraak.id,
-        datum: afspraak.datum,
-        voorbereidingDatum: afspraak.voorbereidingDatum,
-        urenOpLocatie: afspraak.urenOpLocatie,
-        urenVoorbereiding: afspraak.urenVoorbereiding,
-        reistijdEnkelMinuten: afspraak.reistijdEnkelMinuten,
-        status: afspraak.status,
-        voorbereidingGedaan: afspraak.voorbereidingGedaan,
-      })),
-    [afspraken],
-  );
+  // De school waar het formulier op staat bepaalt welke trainingslijst er
+  // onder de agenda hoort.
+  const klantVanFormulier = gekozenAfspraak?.klant ?? null;
+
+  const trainingenVanKlant = klantVanFormulier
+    ? afspraken.filter(
+        (afspraak) =>
+          afspraak.klantId === klantVanFormulier.id &&
+          afspraak.status === "gepland",
+      )
+    : [];
+
+  // Alleen afspraken met een datum kunnen in de agenda staan.
+  const inDeAgenda = afspraken.filter((afspraak) => afspraak.datum);
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 p-5 xl:grid-cols-[minmax(420px,520px)_1fr]">
@@ -64,10 +61,8 @@ export function Werkblad({
         <AfspraakFormulier
           klanten={klanten}
           contactpersonen={contactpersonen}
-          activiteitsoorten={activiteitsoorten}
-          instellingen={instellingen}
+          trainingsoorten={trainingsoorten}
           afspraak={gekozenAfspraak}
-          alleAfspraken={alleAfspraken}
           gekozenDatum={gekozenDatum}
           onNieuw={() => {
             setAfspraakId(null);
@@ -76,21 +71,50 @@ export function Werkblad({
         />
       </Card>
 
-      <Card className="min-h-[640px] p-4">
-        <Agenda
-          afspraken={afspraken}
-          nietInzetbareDagen={nietInzetbareDagen}
-          geselecteerdeAfspraakId={afspraakId}
-          onKiesAfspraak={(id) => {
-            setAfspraakId(id);
-            setGekozenDatum(null);
-          }}
-          onKiesDatum={(datum) => {
-            setAfspraakId(null);
-            setGekozenDatum(datum);
-          }}
-        />
-      </Card>
+      <div className="flex min-h-0 flex-col gap-5">
+        <Card className="min-h-[560px] flex-1 p-4">
+          <Agenda
+            afspraken={inDeAgenda}
+            nietInzetbareDagen={nietInzetbareDagen}
+            geselecteerdeAfspraakId={afspraakId}
+            onKiesAfspraak={(id) => {
+              setAfspraakId(id);
+              setGekozenDatum(null);
+            }}
+            onKiesDatum={(datum) => {
+              setAfspraakId(null);
+              setGekozenDatum(datum);
+            }}
+          />
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Afgesproken trainingen</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {klantVanFormulier ? (
+              <Trainingslijst
+                klantId={klantVanFormulier.id}
+                klantNaam={klantVanFormulier.naam}
+                trainingen={trainingenVanKlant}
+                trainingsoorten={trainingsoorten}
+                onKiesAfspraak={(id) => {
+                  setAfspraakId(id);
+                  setGekozenDatum(null);
+                }}
+                compact
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Klik een afspraak aan in de agenda om te zien wat er verder met
+                die school is afgesproken. De volledige lijst per school staat
+                bij Klanten.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -10,7 +10,9 @@ import type { AfspraakInvoer } from "../types";
 export function maakAfspraak(
   velden: Partial<AfspraakInvoer> = {},
 ): AfspraakInvoer {
-  const datum = velden.datum ?? "2027-03-10";
+  // Niet `??` gebruiken: een test die bewust `datum: null` doorgeeft — een
+  // afspraak die nog ingepland moet worden — zou dan de standaarddatum krijgen.
+  const datum = "datum" in velden ? velden.datum! : "2027-03-10";
   return {
     id: "afspraak-1",
     datum,

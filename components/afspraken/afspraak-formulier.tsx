@@ -4,24 +4,30 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2, Save, Trash2, XCircle } from "lucide-react";
+import { CalendarClock, Save, Trash2, XCircle } from "lucide-react";
 
 import {
+  annuleerAfspraak,
   bewaarAfspraak,
   verwijderAfspraak,
-  wijzigStatus,
 } from "@/app/afspraken/acties";
 import { KlantKiezer } from "@/components/afspraken/klant-kiezer";
 import { NieuweKlantDialoog } from "@/components/afspraken/nieuwe-klant-dialoog";
-import { Urenberekening } from "@/components/afspraken/urenberekening";
 import { PrivacyWaarschuwing } from "@/components/privacy-waarschuwing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Datumveld } from "@/components/ui/datumveld";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -30,26 +36,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { naarIsoDatum } from "@/lib/formatteer";
 import type {
   Activiteitsoort,
   Afspraak,
   Contactpersoon,
-  Instellingen,
+  Dagdeel,
   Klant,
 } from "@/lib/data/types";
-import type { AfspraakInvoer } from "@/lib/uren";
 import {
   afspraakSchema,
   type AfspraakFormulier,
 } from "@/lib/validatie/afspraak";
 
-const DAGDELEN = [
+const DAGDELEN: Array<{ waarde: Dagdeel; label: string }> = [
   { waarde: "ochtend", label: "Ochtend" },
   { waarde: "middag", label: "Middag" },
-  { waarde: "hele_dag", label: "Hele dag" },
   { waarde: "anders", label: "Anders" },
-] as const;
+];
 
 const STATUSLABELS: Record<Afspraak["status"], string> = {
   gepland: "Gepland",
@@ -58,26 +61,21 @@ const STATUSLABELS: Record<Afspraak["status"], string> = {
   verzet: "Verzet",
 };
 
-function legeWaarden(vandaag: string): AfspraakFormulier {
+function legeWaarden(datum: string): AfspraakFormulier {
   return {
     id: "",
     klantId: "",
     contactpersoonId: "",
     activiteitsoortId: "",
     titel: "",
-    datum: vandaag,
-    dagdeel: "ochtend",
+    datum,
+    dagdelen: ["ochtend"],
     andersOmschrijving: "",
     starttijd: "",
     eindtijd: "",
-    voorbereidingDatum: vandaag,
-    urenOpLocatie: 0,
-    urenVoorbereiding: 0,
-    reistijdEnkelMinuten: 0,
     afsprakenMetKlant: "",
     notitie: "",
     voltooid: false,
-    voorbereidingGedaan: false,
   };
 }
 
@@ -88,49 +86,42 @@ function naarFormulier(afspraak: Afspraak): AfspraakFormulier {
     contactpersoonId: afspraak.contactpersoonId ?? "",
     activiteitsoortId: afspraak.activiteitsoortId,
     titel: afspraak.titel,
-    datum: afspraak.datum,
-    dagdeel: afspraak.dagdeel,
+    datum: afspraak.datum ?? "",
+    dagdelen: afspraak.dagdelen,
     andersOmschrijving: afspraak.andersOmschrijving ?? "",
     starttijd: afspraak.starttijd ?? "",
     eindtijd: afspraak.eindtijd ?? "",
-    voorbereidingDatum: afspraak.voorbereidingDatum,
-    urenOpLocatie: afspraak.urenOpLocatie,
-    urenVoorbereiding: afspraak.urenVoorbereiding,
-    reistijdEnkelMinuten: afspraak.reistijdEnkelMinuten ?? 0,
     afsprakenMetKlant: afspraak.afsprakenMetKlant ?? "",
     notitie: afspraak.notitie ?? "",
     voltooid: afspraak.status === "voltooid",
-    voorbereidingGedaan: afspraak.voorbereidingGedaan,
   };
 }
 
-/** Afspraakformulier, linkerkolom van het hoofdscherm (SPEC.md 6.2). */
+/**
+ * Afspraakformulier, linkerkolom van het hoofdscherm.
+ *
+ * De medewerker vult alleen in wát er gebeurt en wanneer. De uren op locatie,
+ * de voorbereidingsuren en de reistijd worden serverside afgeleid uit de soort
+ * training en de school; ze staan hier bewust niet.
+ */
 export function AfspraakFormulier({
   klanten,
   contactpersonen,
-  activiteitsoorten,
-  instellingen,
+  trainingsoorten,
   afspraak,
-  alleAfspraken,
   gekozenDatum,
   onNieuw,
 }: {
   klanten: Klant[];
   contactpersonen: Contactpersoon[];
-  activiteitsoorten: Activiteitsoort[];
-  instellingen: Instellingen;
+  trainingsoorten: Activiteitsoort[];
   afspraak: Afspraak | null;
-  alleAfspraken: AfspraakInvoer[];
   gekozenDatum: string | null;
   onNieuw: () => void;
 }) {
   const router = useRouter();
-  const vandaag = React.useMemo(() => naarIsoDatum(new Date()), []);
   const [melding, setMelding] = React.useState<string | null>(null);
-
-  // Zolang de gebruiker de voorbereidingsdatum niet zelf heeft aangeraakt,
-  // loopt die mee met de datum van de afspraak (SPEC.md 6.2).
-  const voorbereidingLosgekoppeld = React.useRef(false);
+  const [annuleerDialoog, setAnnuleerDialoog] = React.useState(false);
 
   const {
     control,
@@ -144,85 +135,52 @@ export function AfspraakFormulier({
     resolver: zodResolver(afspraakSchema),
     defaultValues: afspraak
       ? naarFormulier(afspraak)
-      : legeWaarden(gekozenDatum ?? vandaag),
+      : legeWaarden(gekozenDatum ?? ""),
   });
 
-  // De agenda kan een andere afspraak of datum aanwijzen; het formulier volgt.
+  // De agenda of de trainingslijst kan een andere afspraak aanwijzen; het
+  // formulier volgt.
   React.useEffect(() => {
-    voorbereidingLosgekoppeld.current = afspraak
-      ? afspraak.datum !== afspraak.voorbereidingDatum
-      : false;
-    reset(
-      afspraak ? naarFormulier(afspraak) : legeWaarden(gekozenDatum ?? vandaag),
-    );
+    reset(afspraak ? naarFormulier(afspraak) : legeWaarden(gekozenDatum ?? ""));
     setMelding(null);
-  }, [afspraak, gekozenDatum, reset, vandaag]);
+  }, [afspraak, gekozenDatum, reset]);
 
   const klantId = watch("klantId");
   const datum = watch("datum");
-  const voorbereidingDatum = watch("voorbereidingDatum");
-  const dagdeel = watch("dagdeel");
+  const dagdelen = watch("dagdelen");
   const activiteitsoortId = watch("activiteitsoortId");
-  const urenOpLocatie = watch("urenOpLocatie");
-  const urenVoorbereiding = watch("urenVoorbereiding");
-  const reistijdEnkelMinuten = watch("reistijdEnkelMinuten");
-  const voorbereidingGedaan = watch("voorbereidingGedaan");
-  const voltooid = watch("voltooid");
-
-  const gekozenSoort = activiteitsoorten.find(
-    (soort) => soort.id === activiteitsoortId,
-  );
-  const urenHandmatig = gekozenSoort?.handmatigeUren ?? false;
+  const titel = watch("titel");
 
   const contactpersonenVanKlant = contactpersonen.filter(
     (persoon) => persoon.klantId === klantId,
   );
+  const heleDag =
+    dagdelen.includes("ochtend") && dagdelen.includes("middag");
 
   function kiesKlant(nieuweKlantId: string) {
     setValue("klantId", nieuweKlantId, { shouldValidate: true });
     setValue("contactpersoonId", "");
 
-    const klant = klanten.find((k) => k.id === nieuweKlantId);
-    if (klant?.reistijdEnkelMinuten != null) {
-      setValue("reistijdEnkelMinuten", klant.reistijdEnkelMinuten);
-    }
-    // De primaire contactpersoon is de logische eerste keuze.
     const primair = contactpersonen.find(
       (persoon) => persoon.klantId === nieuweKlantId && persoon.isPrimair,
     );
     if (primair) setValue("contactpersoonId", primair.id);
   }
 
-  function kiesActiviteitsoort(soortId: string) {
+  function kiesSoort(soortId: string) {
     setValue("activiteitsoortId", soortId, { shouldValidate: true });
-    const soort = activiteitsoorten.find((s) => s.id === soortId);
-    if (soort && !soort.handmatigeUren) {
-      setValue("urenOpLocatie", soort.urenOpLocatie);
-      setValue("urenVoorbereiding", soort.urenVoorbereiding);
-    }
+    // De naam van de soort is een bruikbare werktitel zolang er nog niets
+    // eigens is ingevuld.
+    const soort = trainingsoorten.find((s) => s.id === soortId);
+    if (soort && !titel.trim()) setValue("titel", soort.naam);
   }
 
-  function kiesDatum(nieuweDatum: string) {
-    setValue("datum", nieuweDatum, { shouldValidate: true });
-    if (!voorbereidingLosgekoppeld.current) {
-      setValue("voorbereidingDatum", nieuweDatum);
-    }
+  function wisselDagdeel(waarde: Dagdeel, aan: boolean) {
+    const nieuw = aan
+      ? [...dagdelen, waarde]
+      : dagdelen.filter((deel) => deel !== waarde);
+    setValue("dagdelen", nieuw, { shouldValidate: true });
   }
-
-  const conceptAfspraak: AfspraakInvoer = {
-    id: afspraak?.id ?? "concept",
-    datum: datum || vandaag,
-    voorbereidingDatum: voorbereidingDatum || datum || vandaag,
-    urenOpLocatie: Number(urenOpLocatie) || 0,
-    urenVoorbereiding: Number(urenVoorbereiding) || 0,
-    reistijdEnkelMinuten: Number(reistijdEnkelMinuten) || 0,
-    status: voltooid ? "voltooid" : (afspraak?.status ?? "gepland"),
-    voorbereidingGedaan,
-  };
-
-  const andereAfsprakenOpDezeDag = alleAfspraken.filter(
-    (andere) => andere.datum === conceptAfspraak.datum && andere.id !== conceptAfspraak.id,
-  );
 
   async function opslaan(waarden: AfspraakFormulier) {
     const resultaat = await bewaarAfspraak(waarden);
@@ -230,9 +188,10 @@ export function AfspraakFormulier({
     if (resultaat.gelukt) router.refresh();
   }
 
-  async function annuleerAfspraak() {
+  async function annuleer(voorbereidingGedaan: boolean) {
     if (!afspraak) return;
-    const resultaat = await wijzigStatus(afspraak.id, "geannuleerd");
+    setAnnuleerDialoog(false);
+    const resultaat = await annuleerAfspraak(afspraak.id, voorbereidingGedaan);
     setMelding(resultaat.melding ?? null);
     if (resultaat.gelukt) router.refresh();
   }
@@ -250,7 +209,7 @@ export function AfspraakFormulier({
   return (
     <form onSubmit={handleSubmit(opslaan)} className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-semibold">
             {afspraak ? "Afspraak bewerken" : "Nieuwe afspraak"}
           </h2>
@@ -260,6 +219,9 @@ export function AfspraakFormulier({
             >
               {STATUSLABELS[afspraak.status]}
             </Badge>
+          ) : null}
+          {afspraak && !afspraak.datum ? (
+            <Badge variant="outline">Nog in te plannen</Badge>
           ) : null}
         </div>
         {afspraak ? (
@@ -318,15 +280,15 @@ export function AfspraakFormulier({
         />
       </div>
 
-      {/* Soort activiteit */}
+      {/* Soort training */}
       <div className="grid gap-1.5">
-        <Label htmlFor="activiteitsoort">Soort activiteit</Label>
-        <Select value={activiteitsoortId} onValueChange={kiesActiviteitsoort}>
+        <Label htmlFor="activiteitsoort">Soort training</Label>
+        <Select value={activiteitsoortId} onValueChange={kiesSoort}>
           <SelectTrigger id="activiteitsoort">
-            <SelectValue placeholder="Kies een soort activiteit" />
+            <SelectValue placeholder="Kies een soort training" />
           </SelectTrigger>
           <SelectContent>
-            {activiteitsoorten.map((soort) => (
+            {trainingsoorten.map((soort) => (
               <SelectItem key={soort.id} value={soort.id}>
                 <span className="flex items-center gap-2">
                   <span
@@ -350,60 +312,56 @@ export function AfspraakFormulier({
         <Fout melding={errors.titel?.message} />
       </div>
 
-      {/* Datum en dagdeel */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="datum">Datum</Label>
-          <Datumveld id="datum" waarde={datum} onWijzig={kiesDatum} />
-          <Fout melding={errors.datum?.message} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="voorbereidingDatum">Datum voorbereiding</Label>
-          <Datumveld
-            id="voorbereidingDatum"
-            waarde={voorbereidingDatum}
-            onWijzig={(nieuweDatum) => {
-              voorbereidingLosgekoppeld.current = true;
-              setValue("voorbereidingDatum", nieuweDatum, {
-                shouldValidate: true,
-              });
-            }}
-          />
-          <Fout melding={errors.voorbereidingDatum?.message} />
-        </div>
+      {/* Datum */}
+      <div className="grid gap-1.5">
+        <Label htmlFor="datum">Datum</Label>
+        <Datumveld
+          id="datum"
+          waarde={datum}
+          onWijzig={(nieuweDatum) =>
+            setValue("datum", nieuweDatum, { shouldValidate: true })
+          }
+        />
+        <p className="text-xs text-muted-foreground">
+          Laat leeg als de training wel is afgesproken maar nog niet is
+          ingepland.
+        </p>
+        <Fout melding={errors.datum?.message} />
       </div>
 
+      {/* Dagdeel */}
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm font-medium">Dagdeel</legend>
-        <Controller
-          control={control}
-          name="dagdeel"
-          render={({ field }) => (
-            <RadioGroup
-              value={field.value}
-              onValueChange={field.onChange}
-              className="flex flex-wrap gap-x-5 gap-y-2"
-            >
-              {DAGDELEN.map((optie) => (
-                <div key={optie.waarde} className="flex items-center gap-2">
-                  <RadioGroupItem
-                    value={optie.waarde}
-                    id={`dagdeel-${optie.waarde}`}
-                  />
-                  <Label
-                    htmlFor={`dagdeel-${optie.waarde}`}
-                    className="font-normal"
-                  >
-                    {optie.label}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          )}
-        />
+        <legend className="mb-2 text-sm font-medium">
+          Dagdeel
+          {heleDag ? (
+            <span className="ml-2 font-normal text-muted-foreground">
+              hele dag
+            </span>
+          ) : null}
+        </legend>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {DAGDELEN.map((optie) => (
+            <div key={optie.waarde} className="flex items-center gap-2">
+              <Checkbox
+                id={`dagdeel-${optie.waarde}`}
+                checked={dagdelen.includes(optie.waarde)}
+                onCheckedChange={(aan) =>
+                  wisselDagdeel(optie.waarde, aan === true)
+                }
+              />
+              <Label
+                htmlFor={`dagdeel-${optie.waarde}`}
+                className="font-normal"
+              >
+                {optie.label}
+              </Label>
+            </div>
+          ))}
+        </div>
+        <Fout melding={errors.dagdelen?.message} />
       </fieldset>
 
-      {dagdeel === "anders" ? (
+      {dagdelen.includes("anders") ? (
         <div className="grid gap-1.5">
           <Label htmlFor="andersOmschrijving">Anders, namelijk</Label>
           <Input
@@ -427,54 +385,6 @@ export function AfspraakFormulier({
         </div>
       </div>
 
-      {/* Uren en reistijd */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="urenOpLocatie">Uren op locatie</Label>
-          <Input
-            id="urenOpLocatie"
-            type="number"
-            step="0.25"
-            min={0}
-            readOnly={!urenHandmatig}
-            className={!urenHandmatig ? "bg-muted" : undefined}
-            {...register("urenOpLocatie", { valueAsNumber: true })}
-          />
-          <Fout melding={errors.urenOpLocatie?.message} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="urenVoorbereiding">Uren voorbereiding</Label>
-          <Input
-            id="urenVoorbereiding"
-            type="number"
-            step="0.25"
-            min={0}
-            readOnly={!urenHandmatig}
-            className={!urenHandmatig ? "bg-muted" : undefined}
-            {...register("urenVoorbereiding", { valueAsNumber: true })}
-          />
-          <Fout melding={errors.urenVoorbereiding?.message} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="reistijdEnkelMinuten">Reistijd enkel (min)</Label>
-          <Input
-            id="reistijdEnkelMinuten"
-            type="number"
-            min={0}
-            max={600}
-            {...register("reistijdEnkelMinuten", { valueAsNumber: true })}
-          />
-          <Fout melding={errors.reistijdEnkelMinuten?.message} />
-        </div>
-      </div>
-
-      {!urenHandmatig ? (
-        <p className="-mt-2 text-xs text-muted-foreground">
-          De uren komen uit de activiteitsoort. Kies &ldquo;Anders&rdquo; om ze
-          zelf in te vullen.
-        </p>
-      ) : null}
-
       {/* Vrije tekstvelden */}
       <div className="grid gap-1.5">
         <Label htmlFor="afsprakenMetKlant">Afspraken met de school</Label>
@@ -492,48 +402,23 @@ export function AfspraakFormulier({
         <PrivacyWaarschuwing />
       </div>
 
-      {/* Vinkjes */}
-      <div className="grid gap-3">
-        <div className="flex items-center gap-2">
-          <Controller
-            control={control}
-            name="voltooid"
-            render={({ field }) => (
-              <Checkbox
-                id="voltooid"
-                checked={field.value}
-                onCheckedChange={(aangevinkt) => field.onChange(aangevinkt === true)}
-              />
-            )}
-          />
-          <Label htmlFor="voltooid" className="font-normal">
-            Training voltooid
-          </Label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Controller
-            control={control}
-            name="voorbereidingGedaan"
-            render={({ field }) => (
-              <Checkbox
-                id="voorbereidingGedaan"
-                checked={field.value}
-                onCheckedChange={(aangevinkt) => field.onChange(aangevinkt === true)}
-              />
-            )}
-          />
-          <Label htmlFor="voorbereidingGedaan" className="font-normal">
-            Voorbereiding gedaan
-          </Label>
-        </div>
+      {/* Vinkje */}
+      <div className="flex items-center gap-2">
+        <Controller
+          control={control}
+          name="voltooid"
+          render={({ field }) => (
+            <Checkbox
+              id="voltooid"
+              checked={field.value}
+              onCheckedChange={(aan) => field.onChange(aan === true)}
+            />
+          )}
+        />
+        <Label htmlFor="voltooid" className="font-normal">
+          Training gedaan
+        </Label>
       </div>
-
-      <Urenberekening
-        concept={conceptAfspraak}
-        andereAfsprakenOpDezeDag={andereAfsprakenOpDezeDag}
-        instellingen={instellingen}
-      />
 
       {melding ? (
         <p className="text-sm text-muted-foreground" role="status">
@@ -548,7 +433,11 @@ export function AfspraakFormulier({
         </Button>
 
         {afspraak && afspraak.status !== "geannuleerd" ? (
-          <Button type="button" variant="outline" onClick={annuleerAfspraak}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setAnnuleerDialoog(true)}
+          >
             <XCircle aria-hidden />
             Annuleren
           </Button>
@@ -566,13 +455,49 @@ export function AfspraakFormulier({
           </Button>
         ) : null}
 
-        {afspraak?.status === "voltooid" ? (
+        {afspraak && !afspraak.datum ? (
           <span className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4" aria-hidden />
-            Telt mee als gerealiseerd
+            <CalendarClock className="size-4" aria-hidden />
+            Telt pas mee zodra er een datum staat
           </span>
         ) : null}
       </div>
+
+      {/*
+        Bij annuleren telt de voorbereiding wél mee als die al gedaan was
+        (SPEC.md 5.5). Zonder deze vraag zou dat werk stilzwijgend uit de
+        urenverantwoording vallen.
+      */}
+      <Dialog open={annuleerDialoog} onOpenChange={setAnnuleerDialoog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Afspraak annuleren</DialogTitle>
+            <DialogDescription>
+              Had je de voorbereiding al gedaan? Dan blijven die uren meetellen
+              in je urenverantwoording.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setAnnuleerDialoog(false)}
+            >
+              Toch niet annuleren
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => annuleer(false)}
+            >
+              Nee, nog niet gedaan
+            </Button>
+            <Button type="button" onClick={() => annuleer(true)}>
+              Ja, voorbereiding was gedaan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

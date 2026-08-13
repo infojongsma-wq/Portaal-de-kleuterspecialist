@@ -9,7 +9,12 @@ import type {
  */
 
 export type Rol = "beheerder" | "medewerker";
-export type Dagdeel = "ochtend" | "middag" | "hele_dag" | "anders";
+
+/**
+ * Een afspraak kan meerdere dagdelen beslaan. "Hele dag" is geen eigen waarde:
+ * dat is ochtend én middag samen.
+ */
+export type Dagdeel = "ochtend" | "middag" | "anders";
 export type Reisgegevensbron = "automatisch" | "handmatig";
 export type Urenbron = "automatisch" | "handmatig";
 export type SoortNietInzetbareDag = "schoolvakantie" | "feestdag" | "overig";
@@ -85,13 +90,14 @@ export interface Afspraak {
   activiteitsoortId: string;
 
   titel: string;
-  datum: string;
-  dagdeel: Dagdeel;
+  /** `null` betekent: met de school afgesproken, nog in te plannen. */
+  datum: string | null;
+  dagdelen: Dagdeel[];
   andersOmschrijving: string | null;
   starttijd: string | null;
   eindtijd: string | null;
 
-  voorbereidingDatum: string;
+  voorbereidingDatum: string | null;
   urenOpLocatie: number;
   urenVoorbereiding: number;
   reistijdEnkelMinuten: number | null;

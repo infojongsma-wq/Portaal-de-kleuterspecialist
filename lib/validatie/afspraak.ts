@@ -17,50 +17,42 @@ const vrijeTekst = z
   .trim()
   .max(2000, "Deze tekst is te lang; maximaal 2000 tekens.");
 
+/**
+ * Het afspraakformulier van de medewerker.
+ *
+ * De uren en de reistijd staan hier bewust niet in: die leidt de server af uit
+ * de activiteitsoort en de school. Wat de browser daarover zou meesturen wordt
+ * genegeerd, zodat een medewerker de urenregistratie niet kan sturen.
+ *
+ * De datum mag leeg zijn. Dat betekent "nog in te plannen": met de school
+ * afgesproken, maar er staat nog geen dag voor.
+ */
 export const afspraakSchema = z
   .object({
     id: z.string().optional(),
     klantId: z.string().min(1, "Kies een school."),
     contactpersoonId: z.string().optional(),
-    activiteitsoortId: z.string().min(1, "Kies een soort activiteit."),
+    activiteitsoortId: z.string().min(1, "Kies een soort training."),
     titel: z
       .string()
       .trim()
       .min(1, "Vul de naam van de training in.")
       .max(200, "De naam is te lang; maximaal 200 tekens."),
-    datum: isoDatum,
-    dagdeel: z.enum(["ochtend", "middag", "hele_dag", "anders"], {
-      message: "Kies een dagdeel.",
-    }),
+    datum: z.union([isoDatum, z.literal("")]),
+    dagdelen: z
+      .array(z.enum(["ochtend", "middag", "anders"]))
+      .min(1, "Kies minstens één dagdeel."),
     andersOmschrijving: z.string().trim().max(200).optional(),
     starttijd: z.string().optional(),
     eindtijd: z.string().optional(),
-    voorbereidingDatum: isoDatum,
-    // Geen `z.coerce` hier: het formulier levert deze velden al als getal aan
-    // (`valueAsNumber`), en coercion zou het invoertype op `unknown` zetten
-    // waardoor react-hook-form zijn typen niet meer rond krijgt.
-    urenOpLocatie: z
-      .number({ message: "Vul een aantal uren in." })
-      .min(0, "Uren kunnen niet negatief zijn.")
-      .max(24, "Meer dan 24 uur op één dag kan niet."),
-    urenVoorbereiding: z
-      .number({ message: "Vul een aantal uren in." })
-      .min(0, "Uren kunnen niet negatief zijn.")
-      .max(24, "Meer dan 24 uur op één dag kan niet."),
-    reistijdEnkelMinuten: z
-      .number({ message: "Vul de reistijd in minuten in." })
-      .int("Vul hele minuten in.")
-      .min(0, "Reistijd kan niet negatief zijn.")
-      .max(600, "Meer dan 600 minuten enkele reis lijkt een vergissing."),
     afsprakenMetKlant: vrijeTekst.optional(),
     notitie: vrijeTekst.optional(),
     voltooid: z.boolean(),
-    voorbereidingGedaan: z.boolean(),
   })
-  // "Anders, namelijk" is verplicht zodra het dagdeel op "Anders" staat.
+  // "Anders, namelijk" is verplicht zodra "Anders" is aangevinkt.
   .refine(
     (waarden) =>
-      waarden.dagdeel !== "anders" ||
+      !waarden.dagdelen.includes("anders") ||
       (waarden.andersOmschrijving?.length ?? 0) > 0,
     {
       message: "Vul in wat de afwijkende tijd is.",
@@ -76,7 +68,46 @@ export const afspraakSchema = z
       message: "De eindtijd moet na de starttijd liggen.",
       path: ["eindtijd"],
     },
-  );
+  )
+  // Zonder datum valt er niets af te vinken als voltooid.
+  .refine((waarden) => !waarden.voltooid || waarden.datum !== "", {
+    message: "Vul eerst een datum in voordat je de training afvinkt.",
+    path: ["datum"],
+  });
+
+/** Trainingen in één keer aan een school hangen, zonder datum. */
+export const afgesprokenTrainingenSchema = z.object({
+  klantId: z.string().min(1, "Kies een school."),
+  activiteitsoortIds: z
+    .array(z.string().min(1))
+    .min(1, "Kies minstens één soort training."),
+});
+
+/** Beheer: een soort training aanmaken of wijzigen (SPEC.md 4.5). */
+export const activiteitsoortSchema = z.object({
+  id: z.string().optional(),
+  naam: z
+    .string()
+    .trim()
+    .min(1, "Vul een naam in.")
+    .max(100, "De naam is te lang."),
+  urenOpLocatie: z.coerce
+    .number({ message: "Vul de uren op locatie in." })
+    .min(0, "Uren kunnen niet negatief zijn.")
+    .max(24, "Meer dan 24 uur op één dag kan niet."),
+  urenVoorbereiding: z.coerce
+    .number({ message: "Vul de voorbereidingsuren in." })
+    .min(0, "Uren kunnen niet negatief zijn.")
+    .max(24, "Meer dan 24 uur op één dag kan niet."),
+  kleur: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Kies een kleur.")
+    .default("#3b82f6"),
+  volgorde: z.coerce.number().int().min(0).max(999).default(0),
+  actief: z.boolean().default(true),
+});
+
+export type ActiviteitsoortFormulier = z.infer<typeof activiteitsoortSchema>;
 
 export type AfspraakFormulier = z.infer<typeof afspraakSchema>;
 

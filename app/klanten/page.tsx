@@ -7,16 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Trainingslijst } from "@/components/afspraken/trainingslijst";
 import {
+  haalAfgesprokenTrainingen,
   haalAfsprakenVoorKlant,
   haalContactpersonen,
   haalKlanten,
+  haalTrainingsoorten,
 } from "@/lib/data/queries";
-import {
-  formatteerDatum,
-  formatteerMinuten,
-  naarIsoDatum,
-} from "@/lib/formatteer";
+import { formatteerDatum, formatteerMinuten } from "@/lib/formatteer";
 import type { AfspraakMetContext } from "@/lib/data/types";
 import { cn } from "@/lib/utils";
 
@@ -50,17 +49,14 @@ export default async function KlantenPagina({
   const gekozen =
     alleKlanten.find((klant) => klant.id === gekozenId) ?? gevonden[0] ?? null;
 
-  const vandaag = naarIsoDatum(new Date());
   const afspraken = gekozen ? haalAfsprakenVoorKlant(gekozen.id) : [];
-  const ingepland = afspraken
-    .filter((a) => a.status === "gepland" && a.datum >= vandaag)
-    .sort((a, b) => a.datum.localeCompare(b.datum));
+  const afgesproken = gekozen ? haalAfgesprokenTrainingen(gekozen.id) : [];
   const uitgevoerd = afspraken
     .filter((a) => a.status === "voltooid")
-    .sort((a, b) => b.datum.localeCompare(a.datum));
+    .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""));
   const aantekeningen = afspraken
     .filter((a) => a.afsprakenMetKlant || a.notitie)
-    .sort((a, b) => b.datum.localeCompare(a.datum));
+    .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""));
 
   return (
     <Pagina
@@ -191,18 +187,30 @@ export default async function KlantenPagina({
               </CardContent>
             </Card>
 
-            <div className="grid gap-5 xl:grid-cols-2">
-              <AfsprakenLijst
-                titel="Ingeplande trainingen"
-                afspraken={ingepland}
-                leegtekst="Er staat niets ingepland."
-              />
-              <AfsprakenLijst
-                titel="Uitgevoerde trainingen"
-                afspraken={uitgevoerd}
-                leegtekst="Er is nog niets uitgevoerd."
-              />
-            </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>Afgesproken trainingen</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Wat er met deze school is afgesproken. Vul een datum in om een
+                  training in te plannen; die verschijnt dan in de agenda en
+                  telt mee in de uren.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <Trainingslijst
+                  klantId={gekozen.id}
+                  klantNaam={gekozen.naam}
+                  trainingen={afgesproken}
+                  trainingsoorten={haalTrainingsoorten()}
+                />
+              </CardContent>
+            </Card>
+
+            <AfsprakenLijst
+              titel="Uitgevoerde trainingen"
+              afspraken={uitgevoerd}
+              leegtekst="Er is nog niets uitgevoerd."
+            />
 
             <Card>
               <CardHeader>
@@ -218,7 +226,10 @@ export default async function KlantenPagina({
                     <div key={afspraak.id} className="grid gap-1.5 text-sm">
                       {positie > 0 ? <Separator className="mb-3" /> : null}
                       <p className="font-medium">
-                        {formatteerDatum(afspraak.datum)} — {afspraak.titel}
+                        {afspraak.datum
+                          ? formatteerDatum(afspraak.datum)
+                          : "Nog in te plannen"}{" "}
+                        — {afspraak.titel}
                       </p>
                       {afspraak.afsprakenMetKlant ? (
                         <p>{afspraak.afsprakenMetKlant}</p>
@@ -266,7 +277,7 @@ function AfsprakenLijst({
             {afspraken.map((afspraak) => (
               <li key={afspraak.id} className="flex items-baseline gap-3">
                 <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
-                  {formatteerDatum(afspraak.datum)}
+                  {afspraak.datum ? formatteerDatum(afspraak.datum) : "—"}
                 </span>
                 <span>
                   {afspraak.titel}
