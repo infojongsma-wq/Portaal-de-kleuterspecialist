@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, FileSpreadsheet } from "lucide-react";
 
 import { Keuzelijst, Pagina } from "@/components/pagina";
 import { Badge } from "@/components/ui/badge";
@@ -15,28 +15,24 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Afdrukknop } from "@/components/afdrukknop";
 import {
   haalActiviteitsoorten,
-  haalAfsprakenMetContext,
   haalKlanten,
   huidigeMedewerker,
   urenVanAfspraak,
 } from "@/lib/data/queries";
 import { formatteerDatum, formatteerUren } from "@/lib/formatteer";
-import type { AfspraakMetContext } from "@/lib/data/types";
-import type { AfspraakStatus } from "@/lib/uren";
+import {
+  leesFilters,
+  selecteerAfspraken,
+  STATUSLABELS,
+  zoekreeks,
+  type Sorteerveld,
+} from "@/lib/export/overzicht";
 
 export const metadata = { title: "Overzicht · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
-
-const STATUSLABELS: Record<AfspraakStatus, string> = {
-  gepland: "Gepland",
-  voltooid: "Voltooid",
-  geannuleerd: "Geannuleerd",
-  verzet: "Verzet",
-};
-
-type Sorteerveld = "datum" | "klant" | "soort" | "titel" | "uren" | "status";
 
 const KOLOMMEN: Array<{ veld: Sorteerveld; label: string; rechts?: boolean }> = [
   { veld: "datum", label: "Datum" },
@@ -47,38 +43,20 @@ const KOLOMMEN: Array<{ veld: Sorteerveld; label: string; rechts?: boolean }> = 
   { veld: "status", label: "Status" },
 ];
 
-function tekst(waarde: string | string[] | undefined): string {
-  return Array.isArray(waarde) ? (waarde[0] ?? "") : (waarde ?? "");
-}
-
 /** Chronologisch overzicht met filters en sortering (SPEC.md 6.3). */
 export default async function OverzichtPagina({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const filters = await searchParams;
-  const vanaf = tekst(filters.vanaf);
-  const totEnMet = tekst(filters.tot);
-  const klantId = tekst(filters.klant);
-  const soortId = tekst(filters.soort);
-  const status = tekst(filters.status);
-  const sorteer = (tekst(filters.sorteer) || "datum") as Sorteerveld;
-  const aflopend = tekst(filters.richting) === "af";
+  const filters = leesFilters(await searchParams);
+  const { vanaf, totEnMet, klantId, soortId, status, sorteer, aflopend } =
+    filters;
 
   const medewerker = huidigeMedewerker();
   const klanten = haalKlanten();
   const soorten = haalActiviteitsoorten();
-
-  const afspraken = haalAfsprakenMetContext(medewerker.id)
-    // Een afspraak zonder datum valt buiten elke periode; is er geen
-    // periodefilter, dan hoort hij er wel gewoon bij te staan.
-    .filter((afspraak) => !vanaf || (afspraak.datum ?? "") >= vanaf)
-    .filter((afspraak) => !totEnMet || (!!afspraak.datum && afspraak.datum <= totEnMet))
-    .filter((afspraak) => !klantId || afspraak.klantId === klantId)
-    .filter((afspraak) => !soortId || afspraak.activiteitsoortId === soortId)
-    .filter((afspraak) => !status || afspraak.status === status)
-    .sort(vergelijker(sorteer, aflopend));
+  const afspraken = selecteerAfspraken(medewerker.id, filters);
 
   const totaal = afspraken.reduce(
     (som, afspraak) => som + urenVanAfspraak(afspraak).totaal,
@@ -89,6 +67,17 @@ export default async function OverzichtPagina({
     <Pagina
       titel="Overzicht"
       omschrijving={`${afspraken.length} afspraken · ${formatteerUren(totaal)} uur`}
+      acties={
+        <div className="flex gap-2">
+          <Button variant="outline" asChild className="afdruk-verbergen">
+            <a href={`/overzicht/excel?${zoekreeks(filters)}`}>
+              <FileSpreadsheet aria-hidden />
+              Excel
+            </a>
+          </Button>
+          <Afdrukknop />
+        </div>
+      }
     >
       <Card className="mb-5 p-4">
         <form method="get" className="flex flex-wrap items-end gap-3">
@@ -149,7 +138,7 @@ export default async function OverzichtPagina({
               {KOLOMMEN.map((kolom) => (
                 <TableHead key={kolom.veld} className={kolom.rechts ? "text-right" : undefined}>
                   <Link
-                    href={`/overzicht?${nieuweZoekreeks(filters, kolom.veld, sorteer, aflopend)}`}
+                    href={`/overzicht?${zoekreeks(filters, { sorteer: kolom.veld, aflopend: kolom.veld === sorteer && !aflopend })}`}
                     className="inline-flex items-center gap-1 hover:text-foreground"
                   >
                     {kolom.label}
@@ -234,58 +223,11 @@ export default async function OverzichtPagina({
         verste bestemming één keer per dag — kijk voor het dagtotaal bij Mijn
         uren.
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Exporteren naar Excel en PDF hoort bij fase 4 en zit nog niet in dit
-        prototype.
+      <p className="mt-2 text-xs text-muted-foreground afdruk-verbergen">
+        De Excel-export en de PDF volgen precies de filters en de sortering die
+        hierboven staan ingesteld.
       </p>
     </Pagina>
   );
 }
 
-function vergelijker(veld: Sorteerveld, aflopend: boolean) {
-  const richting = aflopend ? -1 : 1;
-  return (a: AfspraakMetContext, b: AfspraakMetContext) => {
-    const uitkomst = (() => {
-      switch (veld) {
-        case "klant":
-          return a.klant.naam.localeCompare(b.klant.naam, "nl");
-        case "soort":
-          return a.activiteitsoort.naam.localeCompare(
-            b.activiteitsoort.naam,
-            "nl",
-          );
-        case "titel":
-          return a.titel.localeCompare(b.titel, "nl");
-        case "uren":
-          return urenVanAfspraak(a).totaal - urenVanAfspraak(b).totaal;
-        case "status":
-          return a.status.localeCompare(b.status, "nl");
-        default:
-          // Afspraken zonder datum achteraan.
-          if (!a.datum) return b.datum ? 1 : 0;
-          if (!b.datum) return -1;
-          return a.datum.localeCompare(b.datum);
-      }
-    })();
-    return uitkomst * richting;
-  };
-}
-
-function nieuweZoekreeks(
-  filters: Record<string, string | string[] | undefined>,
-  veld: Sorteerveld,
-  huidigVeld: Sorteerveld,
-  huidigAflopend: boolean,
-): string {
-  const reeks = new URLSearchParams();
-  for (const [sleutel, waarde] of Object.entries(filters)) {
-    const enkel = tekst(waarde);
-    if (enkel && sleutel !== "sorteer" && sleutel !== "richting") {
-      reeks.set(sleutel, enkel);
-    }
-  }
-  reeks.set("sorteer", veld);
-  // Nog een keer op dezelfde kolom klikt de richting om.
-  reeks.set("richting", veld === huidigVeld && !huidigAflopend ? "af" : "op");
-  return reeks.toString();
-}

@@ -12,10 +12,10 @@ import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   haalContract,
-  haalHandmatigeUrenregels,
   huidigeMedewerker,
   jaarnormBalans,
   urenInPeriode,
+  urenregelsInPeriode,
 } from "@/lib/data/queries";
 import {
   formatteerUren,
@@ -170,12 +170,22 @@ export default function MijnUrenPagina() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Uren zonder afspraak boeken</CardTitle>
+            <CardTitle>Uren boeken</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Alle uren van deze maand. De uren uit je afspraken staan er
+              automatisch bij; daaronder boek je zelf wat je verder hebt
+              gedaan.
+            </p>
           </CardHeader>
           <CardContent>
             <UrenregelFormulier
               vandaag={vandaag}
-              regels={haalHandmatigeUrenregels(medewerker.id)}
+              regels={urenregelsInPeriode(
+                medewerker.id,
+                maandStart,
+                maandEind,
+                "gerealiseerd",
+              )}
             />
           </CardContent>
         </Card>
@@ -199,7 +209,7 @@ function Kerngetal({
       <dd
         className={
           nadruk === "goed"
-            ? "font-semibold tabular-nums text-emerald-600"
+            ? "font-semibold tabular-nums text-merk-hardgroen"
             : nadruk === "let-op"
               ? "font-semibold tabular-nums text-amber-600"
               : "font-medium tabular-nums"

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="De Kleuterspecialist">
+  <title>De Kleuterspecialist</title>
+  <defs>
+    <clipPath id="ks-appel">
+      <path d="M50 25 C43 13 26 14 19 26 C11 40 13 62 23 78 C31 90 41 94 50 90 C59 94 69 90 77 78 C87 62 89 40 81 26 C74 14 57 13 50 25 Z" />
+    </clipPath>
+  </defs>
+
+  <!-- Blad met steel -->
+  <path d="M54 24 C58 9 71 1 82 2 C84 14 73 23 57 25 Z" fill="#94ab68" />
+  <path
+    d="M52 26 C52 18 53 11 56 6"
+    fill="none"
+    stroke="#94ab68"
+    stroke-width="3.5"
+    stroke-linecap="round"
+  />
+
+  <!-- Vier puzzelstukken binnen de omtrek van de appel -->
+  <g clip-path="url(#ks-appel)">
+    <rect x="0" y="0" width="50" height="54" fill="#008d36" />
+    <rect x="50" y="0" width="50" height="54" fill="#94ab68" />
+    <rect x="0" y="54" width="50" height="46" fill="#026666" />
+    <rect x="50" y="54" width="50" height="46" fill="#3a673a" />
+    <path d="M16 72 C28 97 72 97 84 72 L84 102 L16 102 Z" fill="#95c11f" />
+
+    <!-- Witte voegen -->
+    <g stroke="#ffffff" stroke-width="5" fill="none" stroke-linecap="round">
+      <path d="M50 -4 V104" />
+      <path d="M-4 54 H104" />
+      <path d="M16 72 C28 97 72 97 84 72" />
+    </g>
+
+    <!--
+      Puzzelnokken. Elke nok puilt uit in het aangrenzende stuk en houdt de
+      kleur van het stuk waar hij bij hoort, zodat het als ineengrijpende
+      puzzelstukken leest in plaats van als losse stippen.
+    -->
+    <circle cx="53" cy="31" r="7.5" fill="#008d36" stroke="#ffffff" stroke-width="4" />
+    <circle cx="29" cy="57" r="7.5" fill="#026666" stroke="#ffffff" stroke-width="4" />
+    <circle cx="71" cy="51" r="7.5" fill="#94ab68" stroke="#ffffff" stroke-width="4" />
+    <circle cx="47" cy="74" r="7" fill="#3a673a" stroke="#ffffff" stroke-width="4" />
+  </g>
+</svg>

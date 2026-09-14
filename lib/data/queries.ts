@@ -15,6 +15,7 @@ import type {
 import { opslag } from "./opslag";
 import type {
   Activiteitsoort,
+  AfgeleideUrenregel,
   Afspraak,
   AfspraakMetContext,
   Contactpersoon,
@@ -276,6 +277,120 @@ export function urenInPeriode(
   }).filter((dag) => dag.datum >= vanaf && dag.datum <= totEnMet);
 
   return totaalUren(dagen);
+}
+
+/**
+ * Alle urenregels van een periode: de regels die automatisch uit de afspraken
+ * volgen én de handmatig geboekte regels, door elkaar op datum.
+ *
+ * De automatische regels worden niet opgeslagen — ze zijn volledig af te
+ * leiden uit de afspraken, en hier op het moment van tonen berekend. Dat
+ * voorkomt dat opgeslagen uren en afspraken uit elkaar kunnen lopen.
+ */
+export function urenregelsInPeriode(
+  medewerkerId: string,
+  vanaf: string,
+  totEnMet: string,
+  telwijze: Telwijze,
+): AfgeleideUrenregel[] {
+  const instellingen = haalInstellingen();
+  const { klanten } = opslag();
+  const regels: AfgeleideUrenregel[] = [];
+
+  for (const afspraak of haalAfspraken(medewerkerId)) {
+    const klant = klanten.find((k) => k.id === afspraak.klantId);
+    const omschrijving = `${afspraak.titel}${klant ? ` — ${klant.naam}` : ""}`;
+
+    if (
+      binnenPeriode(afspraak.datum, vanaf, totEnMet) &&
+      teltLocatieUren(afspraak.status, telwijze) &&
+      afspraak.urenOpLocatie > 0
+    ) {
+      regels.push({
+        id: `${afspraak.id}-locatie`,
+        datum: afspraak.datum!,
+        categorie: "op_locatie",
+        uren: afspraak.urenOpLocatie,
+        toelichting: omschrijving,
+        bron: "automatisch",
+        afspraakId: afspraak.id,
+      });
+    }
+
+    if (
+      binnenPeriode(afspraak.voorbereidingDatum, vanaf, totEnMet) &&
+      teltVoorbereidingUren(
+        afspraak.status,
+        afspraak.voorbereidingGedaan,
+        telwijze,
+      ) &&
+      afspraak.urenVoorbereiding > 0
+    ) {
+      regels.push({
+        id: `${afspraak.id}-voorbereiding`,
+        datum: afspraak.voorbereidingDatum!,
+        categorie: "voorbereiding",
+        uren: afspraak.urenVoorbereiding,
+        toelichting: omschrijving,
+        bron: "automatisch",
+        afspraakId: afspraak.id,
+      });
+    }
+  }
+
+  // Reistijd geldt per dag: de verste bestemming één keer, min de eigen tijd.
+  const reisPerDag = new Map<string, { minuten: number; bestemmingen: number }>();
+  for (const afspraak of haalAfspraken(medewerkerId)) {
+    if (!binnenPeriode(afspraak.datum, vanaf, totEnMet)) continue;
+    if (!teltReistijd(afspraak.status, telwijze)) continue;
+    const minuten = afspraak.reistijdEnkelMinuten ?? 0;
+    if (minuten <= 0) continue;
+    const huidig = reisPerDag.get(afspraak.datum!) ?? {
+      minuten: 0,
+      bestemmingen: 0,
+    };
+    reisPerDag.set(afspraak.datum!, {
+      minuten: Math.max(huidig.minuten, minuten),
+      bestemmingen: huidig.bestemmingen + 1,
+    });
+  }
+
+  for (const [datum, reis] of reisPerDag) {
+    const uren = declarabeleReistijdUren(
+      reis.minuten,
+      instellingen.eigenReistijdUrenPerDag,
+    );
+    if (uren <= 0) continue;
+    regels.push({
+      id: `reis-${datum}`,
+      datum,
+      categorie: "reistijd",
+      uren,
+      toelichting:
+        reis.bestemmingen > 1
+          ? `Reistijd boven het uur, verste van ${reis.bestemmingen} bestemmingen`
+          : "Reistijd boven het uur enkele reis",
+      bron: "automatisch",
+      afspraakId: null,
+    });
+  }
+
+  for (const regel of haalHandmatigeUrenregels(medewerkerId)) {
+    if (regel.datum < vanaf || regel.datum > totEnMet) continue;
+    regels.push({
+      id: regel.id,
+      datum: regel.datum,
+      categorie: regel.categorie,
+      uren: regel.uren,
+      toelichting: regel.toelichting,
+      bron: "handmatig",
+      afspraakId: regel.afspraakId,
+    });
+  }
+
+  return regels.sort(
+    (a, b) => a.datum.localeCompare(b.datum) || a.categorie.localeCompare(b.categorie),
+  );
 }
 
 /**

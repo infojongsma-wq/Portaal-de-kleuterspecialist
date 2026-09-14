@@ -31,27 +31,54 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/*
+ * Huisstijl De Kleuterspecialist.
+ *
+ * De vijf merkkleuren staan hieronder als `--merk-*`. Ze worden met mate
+ * gebruikt: turquoise voert de boventoon in knoppen en de balk bovenin,
+ * felgroen markeert dat iets goed staat, de overige tinten zijn voor de
+ * agenda en de grafieken. Vlakken en tekst blijven neutraal, zodat de uren
+ * leesbaar blijven.
+ */
 :root {
+  --merk-turquoise: #026666;
+  --merk-lichtgroen: #94ab68;
+  --merk-felgroen: #95c11f;
+  --merk-donkergroen: #3a673a;
+  --merk-hardgroen: #008d36;
+
   --radius: 0.625rem;
   --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --foreground: oklch(0.21 0.02 180);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
+  --card-foreground: oklch(0.21 0.02 180);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
+  --popover-foreground: oklch(0.21 0.02 180);
+
+  --primary: var(--merk-turquoise);
+  --primary-foreground: oklch(0.99 0.01 150);
+
+  --secondary: oklch(0.96 0.015 175);
+  --secondary-foreground: var(--merk-turquoise);
+  --muted: oklch(0.97 0.008 175);
+  --muted-foreground: oklch(0.5 0.02 190);
+  --accent: oklch(0.95 0.03 150);
+  --accent-foreground: var(--merk-donkergroen);
+
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+
+  --border: oklch(0.92 0.012 180);
+  --input: oklch(0.9 0.015 180);
+  --ring: var(--merk-turquoise);
+}
+
+@theme inline {
+  --color-merk-turquoise: var(--merk-turquoise);
+  --color-merk-lichtgroen: var(--merk-lichtgroen);
+  --color-merk-felgroen: var(--merk-felgroen);
+  --color-merk-donkergroen: var(--merk-donkergroen);
+  --color-merk-hardgroen: var(--merk-hardgroen);
 }
 
 @layer base {
@@ -72,7 +99,8 @@
   --fc-border-color: var(--border);
   --fc-page-bg-color: var(--card);
   --fc-neutral-bg-color: var(--muted);
-  --fc-today-bg-color: oklch(0.968 0.05 250);
+  /* Vandaag krijgt een lichte tint van het merkgroen. */
+  --fc-today-bg-color: color-mix(in srgb, var(--merk-felgroen) 12%, white);
   font-size: 0.875rem;
 }
 
@@ -122,4 +150,59 @@
 /* Schoolvakanties en feestdagen krijgen een grijze achtergrond (SPEC.md 6.2). */
 .fc .fc-day.dag-niet-inzetbaar {
   background-color: var(--muted);
+}
+
+/*
+ * Afdrukopmaak — wordt gebruikt voor de PDF-knop.
+ *
+ * De browser maakt de PDF; hier staat wat er dan weg moet en hoe de tabel
+ * over meerdere bladzijden loopt. Geen PDF-bibliotheek nodig.
+ */
+@media print {
+  /* Knoppenbalk, filters en knoppen horen niet op papier. */
+  header,
+  form,
+  .afdruk-verbergen {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  main {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Kaders en schaduwen kosten alleen maar inkt. */
+  [data-slot="card"] {
+    border: none;
+    box-shadow: none;
+  }
+
+  table {
+    width: 100%;
+    font-size: 10pt;
+  }
+
+  /* Een rij mag niet halverwege over de bladzijde worden afgebroken, en de
+     kolomkoppen komen op elke bladzijde terug. */
+  tr {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /* De merkband bovenin is onderdeel van de header en valt dus al weg. */
+  a[href]::after {
+    content: "";
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 14mm;
+  }
 }

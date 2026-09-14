@@ -28,24 +28,10 @@ import {
   formatteerUren,
   naarIsoDatum,
 } from "@/lib/formatteer";
-import type { UrenCategorie } from "@/lib/uren";
+import { CATEGORIELABELS } from "@/lib/uren";
 
 export const metadata = { title: "Beheer · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
-
-const CATEGORIELABELS: Record<UrenCategorie, string> = {
-  op_locatie: "Op locatie",
-  voorbereiding: "Voorbereiding",
-  reistijd: "Reistijd",
-  administratie: "Administratie",
-  overleg: "Overleg",
-  scholing: "Scholing",
-  acquisitie: "Acquisitie",
-  overig: "Overig",
-  verlof: "Verlof",
-  ziekte: "Ziekte",
-  feestdag: "Feestdag",
-};
 
 /** Beheerdersportaal (SPEC.md 6.6). */
 export default function BeheerPagina() {
@@ -141,7 +127,7 @@ export default function BeheerPagina() {
                               <TableCell
                                 className={`text-right font-medium tabular-nums ${
                                   balans.saldo >= 0
-                                    ? "text-emerald-600"
+                                    ? "text-merk-hardgroen"
                                     : "text-amber-600"
                                 }`}
                               >
@@ -175,7 +161,7 @@ export default function BeheerPagina() {
                                 </div>
                                 <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                                   <div
-                                    className="h-full rounded-full bg-primary"
+                                    className="h-full rounded-full bg-merk-turquoise"
                                     style={{
                                       width: `${(regel.uren / totaalCategorieen) * 100}%`,
                                     }}

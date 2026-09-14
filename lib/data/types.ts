@@ -139,6 +139,21 @@ export interface Instellingen {
   maxUrenPerDagWaarschuwing: number;
 }
 
+/**
+ * Een urenregel zoals die op het scherm staat: afgeleid uit een afspraak, of
+ * handmatig geboekt. Afgeleide regels staan niet in de database — ze volgen uit
+ * de afspraken en worden berekend op het moment van tonen.
+ */
+export interface AfgeleideUrenregel {
+  id: string;
+  datum: string;
+  categorie: UrenCategorie;
+  uren: number;
+  toelichting: string | null;
+  bron: Urenbron;
+  afspraakId: string | null;
+}
+
 /** Een afspraak met de gegevens die de schermen erbij nodig hebben. */
 export interface AfspraakMetContext extends Afspraak {
   klant: Klant;

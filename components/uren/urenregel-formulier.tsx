@@ -2,29 +2,29 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 
 import { bewaarUrenregel, verwijderUrenregel } from "@/app/afspraken/acties";
 import { Keuzelijst } from "@/components/pagina";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Datumveld } from "@/components/ui/datumveld";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatteerDatum, formatteerUren } from "@/lib/formatteer";
-import type { Urenregel } from "@/lib/data/types";
-
-const CATEGORIEEN = [
-  { waarde: "administratie", label: "Administratie" },
-  { waarde: "overleg", label: "Overleg" },
-  { waarde: "scholing", label: "Scholing" },
-  { waarde: "acquisitie", label: "Acquisitie" },
-  { waarde: "reistijd", label: "Reistijd zonder klantbezoek" },
-  { waarde: "overig", label: "Overig" },
-] as const;
+import { CATEGORIELABELS, HANDMATIGE_CATEGORIEEN } from "@/lib/uren";
+import type { AfgeleideUrenregel } from "@/lib/data/types";
+import { cn } from "@/lib/utils";
 
 /**
- * Handmatige urenregels boeken en verwijderen (SPEC.md 6.5).
- * Verlof, ziekte en feestdagen staan er bewust niet bij: die vallen buiten
+ * Uren boeken en terugzien (SPEC.md 6.5).
+ *
+ * De lijst toont álle uren van de periode: de regels die automatisch uit de
+ * afspraken volgen — op locatie, voorbereiding en de reistijd boven het uur —
+ * en de regels die de medewerker zelf boekt. Automatische regels zijn niet te
+ * bewerken; die verander je door de afspraak zelf aan te passen.
+ *
+ * Verlof, ziekte en feestdagen zitten er bewust niet bij: die vallen buiten
  * versie 1 (SPEC.md 4.7 en 10).
  */
 export function UrenregelFormulier({
@@ -32,7 +32,7 @@ export function UrenregelFormulier({
   regels,
 }: {
   vandaag: string;
-  regels: Urenregel[];
+  regels: AfgeleideUrenregel[];
 }) {
   const router = useRouter();
   const [datum, setDatum] = React.useState(vandaag);
@@ -58,6 +58,11 @@ export function UrenregelFormulier({
     if (resultaat.gelukt) router.refresh();
   }
 
+  const totaal = regels.reduce((som, regel) => som + regel.uren, 0);
+  const automatisch = regels
+    .filter((regel) => regel.bron === "automatisch")
+    .reduce((som, regel) => som + regel.uren, 0);
+
   return (
     <div className="grid gap-5">
       <form action={boek} className="flex flex-wrap items-end gap-3">
@@ -66,10 +71,10 @@ export function UrenregelFormulier({
           <Datumveld id="regel-datum" waarde={datum} onWijzig={setDatum} />
         </div>
 
-        <div className="grid min-w-56 gap-1.5">
+        <div className="grid min-w-64 gap-1.5">
           <Label htmlFor="regel-categorie">Categorie</Label>
           <Keuzelijst id="regel-categorie" name="categorie" required>
-            {CATEGORIEEN.map((categorie) => (
+            {HANDMATIGE_CATEGORIEEN.map((categorie) => (
               <option key={categorie.waarde} value={categorie.waarde}>
                 {categorie.label}
               </option>
@@ -93,7 +98,7 @@ export function UrenregelFormulier({
           <Fout melding={fouten.uren} />
         </div>
 
-        <div className="grid min-w-64 flex-1 gap-1.5">
+        <div className="grid min-w-56 flex-1 gap-1.5">
           <Label htmlFor="regel-toelichting">Toelichting</Label>
           <Input id="regel-toelichting" name="toelichting" autoComplete="off" />
         </div>
@@ -111,41 +116,71 @@ export function UrenregelFormulier({
       ) : null}
 
       {regels.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Nog geen handmatige uren geboekt.
+        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          Nog geen uren in deze periode. Uren uit je afspraken verschijnen hier
+          vanzelf zodra je een training als gedaan afvinkt.
         </p>
       ) : (
-        <ul className="divide-y rounded-md border">
-          {regels.map((regel) => (
-            <li
-              key={regel.id}
-              className="flex items-center gap-4 px-4 py-2.5 text-sm"
-            >
-              <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
-                {formatteerDatum(regel.datum)}
-              </span>
-              <span className="w-48 shrink-0">
-                {CATEGORIEEN.find((c) => c.waarde === regel.categorie)?.label ??
-                  regel.categorie}
-              </span>
-              <span className="w-16 shrink-0 text-right tabular-nums">
-                {formatteerUren(regel.uren)}
-              </span>
-              <span className="flex-1 text-muted-foreground">
-                {regel.toelichting}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`Urenregel van ${formatteerDatum(regel.datum)} verwijderen`}
-                onClick={() => verwijder(regel.id)}
+        <>
+          <ul className="divide-y rounded-md border">
+            {regels.map((regel) => (
+              <li
+                key={regel.id}
+                className={cn(
+                  "flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm",
+                  regel.bron === "automatisch" && "bg-muted/40",
+                )}
               >
-                <Trash2 className="text-destructive" aria-hidden />
-              </Button>
-            </li>
-          ))}
-        </ul>
+                <span className="w-24 shrink-0 tabular-nums text-muted-foreground">
+                  {formatteerDatum(regel.datum)}
+                </span>
+
+                <span className="flex w-60 shrink-0 items-center gap-2">
+                  {CATEGORIELABELS[regel.categorie]}
+                  {regel.bron === "automatisch" ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1 text-[11px] font-normal"
+                      title="Volgt uit een afspraak"
+                    >
+                      <CalendarCheck className="size-3" aria-hidden />
+                      afspraak
+                    </Badge>
+                  ) : null}
+                </span>
+
+                <span className="w-16 shrink-0 text-right tabular-nums">
+                  {formatteerUren(regel.uren)}
+                </span>
+
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {regel.toelichting}
+                </span>
+
+                {regel.bron === "handmatig" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Urenregel van ${formatteerDatum(regel.datum)} verwijderen`}
+                    onClick={() => verwijder(regel.id)}
+                  >
+                    <Trash2 className="text-destructive" aria-hidden />
+                  </Button>
+                ) : (
+                  <span className="size-9 shrink-0" aria-hidden />
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <p className="text-sm text-muted-foreground">
+            Totaal {formatteerUren(totaal)} uur, waarvan{" "}
+            {formatteerUren(automatisch)} uur uit afspraken. Regels met het{" "}
+            label &ldquo;afspraak&rdquo; pas je aan door de afspraak zelf te
+            wijzigen.
+          </p>
+        </>
       )}
     </div>
   );

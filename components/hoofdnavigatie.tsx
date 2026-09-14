@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -29,8 +30,28 @@ export function Hoofdnavigatie({
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background">
+      {/* Merkband: de vijf kleuren uit de huisstijl, als dun accent. */}
+      <div className="flex h-1" aria-hidden>
+        <span className="flex-1 bg-merk-turquoise" />
+        <span className="flex-1 bg-merk-hardgroen" />
+        <span className="flex-1 bg-merk-felgroen" />
+        <span className="flex-1 bg-merk-lichtgroen" />
+        <span className="flex-1 bg-merk-donkergroen" />
+      </div>
+
       <div className="flex h-14 items-center gap-6 px-6">
-        <Link href="/afspraken" className="font-semibold tracking-tight">
+        <Link
+          href="/afspraken"
+          className="flex items-center gap-2.5 font-semibold tracking-tight"
+        >
+          <Image
+            src="/logo.svg"
+            alt=""
+            width={30}
+            height={30}
+            priority
+            className="size-[30px]"
+          />
           De Kleuterspecialist
         </Link>
 

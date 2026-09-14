@@ -25,7 +25,7 @@ export function Voortgangsbalk({
         <div
           className={cn(
             "h-full rounded-full transition-all",
-            voorloopt ? "bg-emerald-500" : "bg-amber-500",
+            voorloopt ? "bg-merk-felgroen" : "bg-amber-500",
           )}
           style={{ width: `${deelGerealiseerd}%` }}
         />
@@ -41,7 +41,7 @@ export function Voortgangsbalk({
           <span
             className={cn(
               "mr-1.5 inline-block size-2 rounded-full align-middle",
-              voorloopt ? "bg-emerald-500" : "bg-amber-500",
+              voorloopt ? "bg-merk-felgroen" : "bg-amber-500",
             )}
             aria-hidden
           />

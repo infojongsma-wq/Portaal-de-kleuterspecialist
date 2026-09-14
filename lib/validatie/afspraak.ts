@@ -145,12 +145,13 @@ export type KlantFormulier = z.infer<typeof klantSchema>;
 
 export const urenregelSchema = z.object({
   datum: isoDatum,
+  // Alleen de categorieën die de medewerker zelf boekt; op locatie en
+  // voorbereiding volgen uit de afspraken en komen hier niet binnen.
   categorie: z.enum(
     [
-      "administratie",
+      "inlezen_trainingen",
+      "literatuur_lezen",
       "overleg",
-      "scholing",
-      "acquisitie",
       "reistijd",
       "overig",
     ],

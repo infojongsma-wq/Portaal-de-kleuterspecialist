@@ -1,14 +1,14 @@
 import {
-  DEMO_ACTIVITEITSOORTEN,
-  DEMO_AFSPRAKEN,
-  DEMO_CONTACTPERSONEN,
-  DEMO_CONTRACTEN,
-  DEMO_INSTELLINGEN,
-  DEMO_KLANTEN,
-  DEMO_NIET_INZETBARE_DAGEN,
-  DEMO_PROFIELEN,
-  DEMO_URENREGELS,
-} from "./demo-gegevens";
+  START_ACTIVITEITSOORTEN,
+  START_AFSPRAKEN,
+  START_CONTACTPERSONEN,
+  START_CONTRACTEN,
+  START_INSTELLINGEN,
+  START_KLANTEN,
+  START_NIET_INZETBARE_DAGEN,
+  START_PROFIELEN,
+  START_URENREGELS,
+} from "./startgegevens";
 import type {
   Activiteitsoort,
   Afspraak,
@@ -52,15 +52,15 @@ type MetOpslag = typeof globalThis & { [SLEUTEL]?: Opslag };
 
 function maakOpslag(): Opslag {
   return {
-    profielen: [...DEMO_PROFIELEN],
-    contracten: [...DEMO_CONTRACTEN],
-    klanten: [...DEMO_KLANTEN],
-    contactpersonen: [...DEMO_CONTACTPERSONEN],
-    activiteitsoorten: [...DEMO_ACTIVITEITSOORTEN],
-    afspraken: [...DEMO_AFSPRAKEN],
-    urenregels: [...DEMO_URENREGELS],
-    nietInzetbareDagen: [...DEMO_NIET_INZETBARE_DAGEN],
-    instellingen: { ...DEMO_INSTELLINGEN },
+    profielen: [...START_PROFIELEN],
+    contracten: [...START_CONTRACTEN],
+    klanten: [...START_KLANTEN],
+    contactpersonen: [...START_CONTACTPERSONEN],
+    activiteitsoorten: [...START_ACTIVITEITSOORTEN],
+    afspraken: [...START_AFSPRAKEN],
+    urenregels: [...START_URENREGELS],
+    nietInzetbareDagen: [...START_NIET_INZETBARE_DAGEN],
+    instellingen: { ...START_INSTELLINGEN },
   };
 }
 
