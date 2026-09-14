@@ -23,17 +23,27 @@ Reken op ongeveer twintig minuten.
 
 ## Stap 1 — Supabase-project aanmaken (jij, ±10 minuten)
 
+Supabase kent twee niveaus: een **organisatie** (je bedrijf) en daarbinnen een
+of meer **projecten** (de databases zelf). Bij een nieuw account maak je eerst
+de organisatie aan, daarna pas het project.
+
 1. Ga naar [supabase.com](https://supabase.com) en maak een account. Het gratis
    pakket is ruim voldoende om te beginnen.
-2. Klik **New project**.
-3. Vul in:
+2. **Create an organization.** Dit is nog niet het project.
+   - **Name:** `De Kleuterspecialist`
+   - **Type:** kies wat past; bij een eenmanszaak voldoet `Personal` of
+     `Company` prima. Dit heeft geen gevolgen voor de werking.
+   - **Plan:** `Free`
+   Klik daarna op **Create organization**.
+3. Nu verschijnt het scherm voor het project. Vul in:
    - **Name:** `kleuterspecialist-prod`
    - **Database Password:** laat Supabase er een genereren en **bewaar die in
      je wachtwoordmanager**. Je hebt hem later nodig en hij is niet opnieuw op
      te vragen.
    - **Region:** **Central EU (Frankfurt)**. Dit is belangrijk: je slaat
      arbeidsgegevens op, die horen binnen de EU te blijven.
-4. Klik **Create new project** en wacht tot hij klaar is.
+4. Klik **Create new project** en wacht tot hij klaar is. Dat duurt een paar
+   minuten.
 
 Maak daarnaast hetzelfde aan met de naam `kleuterspecialist-dev`. Dat is je
 oefenomgeving, waar je zonder risico dingen kunt proberen. Niet verplicht, wel
