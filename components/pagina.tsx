@@ -2,7 +2,7 @@ import { Hoofdnavigatie } from "@/components/hoofdnavigatie";
 import { huidigeMedewerker } from "@/lib/data/queries";
 
 /** Vaste schil om elk scherm heen: knoppenbalk boven, inhoud eronder. */
-export function Pagina({
+export async function Pagina({
   titel,
   omschrijving,
   acties,
@@ -13,11 +13,14 @@ export function Pagina({
   acties?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const medewerker = huidigeMedewerker();
+  const medewerker = await huidigeMedewerker();
 
   return (
     <>
-      <Hoofdnavigatie medewerker={medewerker} toonBeheer />
+      <Hoofdnavigatie
+        medewerker={medewerker}
+        toonBeheer={medewerker.rol === "beheerder"}
+      />
       <main className="mx-auto w-full max-w-[1600px] flex-1 p-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -33,21 +36,5 @@ export function Pagina({
         {children}
       </main>
     </>
-  );
-}
-
-/** Native keuzelijst voor filterformulieren die zonder JavaScript werken. */
-export function Keuzelijst({
-  className,
-  ...props
-}: React.ComponentProps<"select">) {
-  return (
-    <select
-      className={[
-        "h-9 w-full rounded-md border border-input bg-background px-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        className ?? "",
-      ].join(" ")}
-      {...props}
-    />
   );
 }

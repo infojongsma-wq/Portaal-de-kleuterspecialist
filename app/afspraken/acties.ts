@@ -1,14 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { huidigeMedewerker } from "@/lib/data/queries";
-import { nieuwId, opslag } from "@/lib/data/opslag";
-import type {
-  Activiteitsoort,
-  Afspraak,
-  Contactpersoon,
-  Klant,
-} from "@/lib/data/types";
+
+import { werkset } from "@/lib/data/werkset";
+import { supabaseServer } from "@/lib/supabase/server";
+import type { Activiteitsoort, Klant } from "@/lib/data/types";
 import { afrondAutomatischeReistijdMinuten } from "@/lib/uren";
 import {
   activiteitsoortSchema,
@@ -20,15 +16,18 @@ import {
 
 /**
  * Alle schrijfacties lopen via server actions met een zod-schema (CLAUDE.md,
- * "Architectuur"). De browser schrijft nooit rechtstreeks naar de opslag.
+ * "Architectuur"). De browser schrijft nooit rechtstreeks naar de database.
  *
- * De uren en de reistijd van een afspraak worden **hier** bepaald, uit de
+ * De verbinding gebruikt de sessie van de ingelogde gebruiker, dus Row Level
+ * Security bepaalt wat er werkelijk mag. De controles hieronder zijn er voor
+ * begrijpelijke meldingen, niet als beveiliging — die zit in Postgres.
+ *
+ * De uren en de reistijd van een afspraak worden hier bepaald, uit de
  * activiteitsoort en de school. Ze komen niet uit het formulier, want de
  * medewerker ziet die velden niet meer.
  *
  * Automatische urenregels worden niet weggeschreven: die zijn volledig af te
- * leiden uit de afspraken, en `lib/uren` doet dat op het moment van tonen.
- * Alleen handmatige uren worden opgeslagen.
+ * leiden uit de afspraken. Alleen handmatige uren worden opgeslagen.
  */
 
 export interface ActieResultaat {
@@ -56,26 +55,41 @@ function ververs() {
   revalidatePath("/beheer");
 }
 
+/** Databasefouten in gewone taal, zonder technische ruis door te geven. */
+function fout(melding: string, oorzaak?: { message: string }): ActieResultaat {
+  return {
+    gelukt: false,
+    melding: oorzaak ? `${melding} (${oorzaak.message})` : melding,
+  };
+}
+
 /**
  * Uren en reistijd afleiden. De reistijd wordt afgerond op hele stappen, want
- * hij komt nu altijd automatisch uit de klantgegevens (SPEC.md 5.6).
+ * hij komt altijd automatisch uit de klantgegevens (SPEC.md 5.6).
  */
-function afgeleideGegevens(soort: Activiteitsoort, klant: Klant) {
-  const { reistijdAfrondingMinuten } = opslag().instellingen;
+function afgeleideGegevens(
+  soort: Activiteitsoort,
+  klant: Klant,
+  afrondingMinuten: number,
+) {
   return {
-    urenOpLocatie: soort.urenOpLocatie,
-    urenVoorbereiding: soort.urenVoorbereiding,
-    reistijdEnkelMinuten:
+    uren_op_locatie: soort.urenOpLocatie,
+    uren_voorbereiding: soort.urenVoorbereiding,
+    reistijd_enkel_minuten:
       klant.reistijdEnkelMinuten === null
         ? null
         : afrondAutomatischeReistijdMinuten(
             klant.reistijdEnkelMinuten,
-            reistijdAfrondingMinuten,
+            afrondingMinuten,
           ),
-    reisafstandEnkelKm: klant.reisafstandEnkelKm,
-    reisgegevensBron: "automatisch" as const,
+    reisafstand_enkel_km: klant.reisafstandEnkelKm,
+    reisgegevens_bron: "automatisch" as const,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Afspraken
+// ---------------------------------------------------------------------------
 
 export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
   const gecontroleerd = afspraakSchema.safeParse(invoer);
@@ -88,92 +102,91 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
   }
 
   const waarden = gecontroleerd.data;
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
 
   const klant = gegevens.klanten.find((k) => k.id === waarden.klantId);
-  if (!klant) return { gelukt: false, melding: "Deze school bestaat niet." };
+  if (!klant) return fout("Deze school bestaat niet.");
 
   const soort = gegevens.activiteitsoorten.find(
     (s) => s.id === waarden.activiteitsoortId,
   );
-  if (!soort) {
-    return { gelukt: false, melding: "Dit soort training bestaat niet." };
-  }
+  if (!soort) return fout("Dit soort training bestaat niet.");
 
   const bestaande = waarden.id
     ? gegevens.afspraken.find((afspraak) => afspraak.id === waarden.id)
     : undefined;
 
-  // Een medewerker komt niet aan de afspraken van een ander (SPEC.md 7).
-  if (bestaande && bestaande.medewerkerId !== medewerker.id) {
-    return { gelukt: false, melding: "Deze afspraak is niet van jou." };
+  if (bestaande && bestaande.medewerkerId !== gegevens.ik.id) {
+    return fout("Deze afspraak is niet van jou.");
   }
 
   const datum = waarden.datum || null;
 
-  const afspraak: Afspraak = {
-    id: bestaande?.id ?? nieuwId(),
-    klantId: waarden.klantId,
-    contactpersoonId: waarden.contactpersoonId || null,
-    medewerkerId: medewerker.id,
-    activiteitsoortId: waarden.activiteitsoortId,
+  // De voorbereiding wordt op dezelfde dag geboekt als het bezoek. Verzet je
+  // een afspraak, dan schuift de voorbereiding mee zolang die niet los stond.
+  const voorbereidingDatum =
+    bestaande && bestaande.voorbereidingDatum !== bestaande.datum
+      ? bestaande.voorbereidingDatum
+      : datum;
+
+  const rij = {
+    klant_id: waarden.klantId,
+    contactpersoon_id: waarden.contactpersoonId || null,
+    medewerker_id: gegevens.ik.id,
+    activiteitsoort_id: waarden.activiteitsoortId,
     titel: waarden.titel,
     datum,
     dagdelen: waarden.dagdelen,
-    andersOmschrijving: waarden.dagdelen.includes("anders")
+    anders_omschrijving: waarden.dagdelen.includes("anders")
       ? waarden.andersOmschrijving || null
       : null,
     starttijd: waarden.starttijd || null,
     eindtijd: waarden.eindtijd || null,
-    // De voorbereiding wordt op dezelfde dag geboekt als het bezoek. Het
-    // datumveld daarvoor is uit het formulier gehaald; de kolom blijft bestaan
-    // zodat het beheer hem later alsnog kan verzetten (SPEC.md 5.1).
-    voorbereidingDatum: bestaande?.voorbereidingDatum ?? datum,
-    ...afgeleideGegevens(soort, klant),
-    status: waarden.voltooid ? "voltooid" : (bestaande?.status ?? "gepland"),
-    voltooidOp: waarden.voltooid
+    voorbereiding_datum: voorbereidingDatum,
+    ...afgeleideGegevens(
+      soort,
+      klant,
+      gegevens.instellingen.reistijdAfrondingMinuten,
+    ),
+    status: waarden.voltooid
+      ? "voltooid"
+      : // Een eerder geannuleerde of verzette afspraak blijft dat.
+        (bestaande?.status === "geannuleerd" || bestaande?.status === "verzet"
+          ? bestaande.status
+          : "gepland"),
+    voltooid_op: waarden.voltooid
       ? (bestaande?.voltooidOp ?? new Date().toISOString())
       : null,
     // Is de training gedaan, dan is de voorbereiding dat ook. Bij annuleren
     // wordt er apart naar gevraagd (zie `annuleerAfspraak`).
-    voorbereidingGedaan: waarden.voltooid
+    voorbereiding_gedaan: waarden.voltooid
       ? true
       : (bestaande?.voorbereidingGedaan ?? false),
-    verzetNaarId: bestaande?.verzetNaarId ?? null,
-    afsprakenMetKlant: waarden.afsprakenMetKlant || null,
+    afspraken_met_klant: waarden.afsprakenMetKlant || null,
     notitie: waarden.notitie || null,
+    gewijzigd_door: gegevens.ik.id,
   };
-
-  // Verzet de afspraak van datum, dan verschuift de voorbereiding mee zolang
-  // die niet los is gezet.
-  if (bestaande && bestaande.voorbereidingDatum === bestaande.datum) {
-    afspraak.voorbereidingDatum = datum;
-  }
-
-  // Een eerder geannuleerde of verzette afspraak blijft dat, tenzij het vinkje
-  // "voltooid" wordt gezet.
-  if (
-    bestaande &&
-    !waarden.voltooid &&
-    (bestaande.status === "geannuleerd" || bestaande.status === "verzet")
-  ) {
-    afspraak.status = bestaande.status;
-  }
 
   if (bestaande) {
-    gegevens.afspraken[gegevens.afspraken.indexOf(bestaande)] = afspraak;
-  } else {
-    gegevens.afspraken.push(afspraak);
+    const { error } = await supabase
+      .from("afspraken")
+      .update(rij)
+      .eq("id", bestaande.id);
+    if (error) return fout("De afspraak kon niet worden bijgewerkt.", error);
+    ververs();
+    return { gelukt: true, id: bestaande.id, melding: "Afspraak bijgewerkt." };
   }
 
-  ververs();
+  const { data, error } = await supabase
+    .from("afspraken")
+    .insert(rij)
+    .select("id")
+    .single();
+  if (error) return fout("De afspraak kon niet worden opgeslagen.", error);
 
-  return {
-    gelukt: true,
-    id: afspraak.id,
-    melding: bestaande ? "Afspraak bijgewerkt." : "Afspraak opgeslagen.",
-  };
+  ververs();
+  return { gelukt: true, id: data?.id, melding: "Afspraak opgeslagen." };
 }
 
 /**
@@ -193,58 +206,62 @@ export async function voegAfgesprokenTrainingenToe(
   }
 
   const { klantId, activiteitsoortIds } = gecontroleerd.data;
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
 
   const klant = gegevens.klanten.find((k) => k.id === klantId);
-  if (!klant) return { gelukt: false, melding: "Deze school bestaat niet." };
+  if (!klant) return fout("Deze school bestaat niet.");
 
   const primair = gegevens.contactpersonen.find(
     (persoon) => persoon.klantId === klantId && persoon.isPrimair,
   );
 
-  let toegevoegd = 0;
-  for (const soortId of activiteitsoortIds) {
+  const rijen = activiteitsoortIds.flatMap((soortId) => {
     const soort = gegevens.activiteitsoorten.find((s) => s.id === soortId);
-    if (!soort || soort.handmatigeUren) continue;
+    if (!soort || soort.handmatigeUren) return [];
 
-    gegevens.afspraken.push({
-      id: nieuwId(),
-      klantId,
-      contactpersoonId: primair?.id ?? null,
-      medewerkerId: medewerker.id,
-      activiteitsoortId: soort.id,
-      // De naam van de soort is de werktitel; die is in het formulier aan te
-      // passen zodra de training wordt ingepland.
-      titel: soort.naam,
-      datum: null,
-      dagdelen: ["ochtend"],
-      andersOmschrijving: null,
-      starttijd: null,
-      eindtijd: null,
-      voorbereidingDatum: null,
-      ...afgeleideGegevens(soort, klant),
-      status: "gepland",
-      voltooidOp: null,
-      voorbereidingGedaan: false,
-      verzetNaarId: null,
-      afsprakenMetKlant: null,
-      notitie: null,
-    });
-    toegevoegd += 1;
-  }
+    return [
+      {
+        klant_id: klantId,
+        contactpersoon_id: primair?.id ?? null,
+        medewerker_id: gegevens.ik.id,
+        activiteitsoort_id: soort.id,
+        // De naam van de soort is de werktitel; die is aan te passen zodra de
+        // training wordt ingepland.
+        titel: soort.naam,
+        datum: null,
+        dagdelen: ["ochtend"],
+        anders_omschrijving: null,
+        starttijd: null,
+        eindtijd: null,
+        voorbereiding_datum: null,
+        ...afgeleideGegevens(
+          soort,
+          klant,
+          gegevens.instellingen.reistijdAfrondingMinuten,
+        ),
+        status: "gepland" as const,
+        voltooid_op: null,
+        voorbereiding_gedaan: false,
+        afspraken_met_klant: null,
+        notitie: null,
+        gewijzigd_door: gegevens.ik.id,
+      },
+    ];
+  });
 
-  if (toegevoegd === 0) {
-    return { gelukt: false, melding: "Er is niets toegevoegd." };
-  }
+  if (rijen.length === 0) return fout("Er is niets toegevoegd.");
+
+  const { error } = await supabase.from("afspraken").insert(rijen);
+  if (error) return fout("De trainingen konden niet worden opgeslagen.", error);
 
   ververs();
   return {
     gelukt: true,
     melding:
-      toegevoegd === 1
+      rijen.length === 1
         ? "Training toegevoegd aan de school."
-        : `${toegevoegd} trainingen toegevoegd aan de school.`,
+        : `${rijen.length} trainingen toegevoegd aan de school.`,
   };
 }
 
@@ -254,25 +271,31 @@ export async function planTrainingIn(
   datum: string | null,
 ): Promise<ActieResultaat> {
   if (datum !== null && !/^\d{4}-\d{2}-\d{2}$/.test(datum)) {
-    return { gelukt: false, melding: "Dat is geen geldige datum." };
+    return fout("Dat is geen geldige datum.");
   }
 
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
   const afspraak = gegevens.afspraken.find((a) => a.id === afspraakId);
 
-  if (!afspraak || afspraak.medewerkerId !== medewerker.id) {
-    return { gelukt: false, melding: "Deze training is niet gevonden." };
+  if (!afspraak || afspraak.medewerkerId !== gegevens.ik.id) {
+    return fout("Deze training is niet gevonden.");
   }
   if (datum === null && afspraak.status === "voltooid") {
-    return {
-      gelukt: false,
-      melding: "Een voltooide training kun je niet terugzetten naar ongepland.",
-    };
+    return fout(
+      "Een voltooide training kun je niet terugzetten naar ongepland.",
+    );
   }
 
-  afspraak.datum = datum;
-  afspraak.voorbereidingDatum = datum;
+  const { error } = await supabase
+    .from("afspraken")
+    .update({
+      datum,
+      voorbereiding_datum: datum,
+      gewijzigd_door: gegevens.ik.id,
+    })
+    .eq("id", afspraakId);
+  if (error) return fout("De datum kon niet worden vastgelegd.", error);
 
   ververs();
   return {
@@ -290,17 +313,24 @@ export async function annuleerAfspraak(
   afspraakId: string,
   voorbereidingGedaan: boolean,
 ): Promise<ActieResultaat> {
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
   const afspraak = gegevens.afspraken.find((a) => a.id === afspraakId);
 
-  if (!afspraak || afspraak.medewerkerId !== medewerker.id) {
-    return { gelukt: false, melding: "Deze afspraak is niet gevonden." };
+  if (!afspraak || afspraak.medewerkerId !== gegevens.ik.id) {
+    return fout("Deze afspraak is niet gevonden.");
   }
 
-  afspraak.status = "geannuleerd";
-  afspraak.voltooidOp = null;
-  afspraak.voorbereidingGedaan = voorbereidingGedaan;
+  const { error } = await supabase
+    .from("afspraken")
+    .update({
+      status: "geannuleerd",
+      voltooid_op: null,
+      voorbereiding_gedaan: voorbereidingGedaan,
+      gewijzigd_door: gegevens.ik.id,
+    })
+    .eq("id", afspraakId);
+  if (error) return fout("De afspraak kon niet worden geannuleerd.", error);
 
   ververs();
   return {
@@ -314,19 +344,27 @@ export async function annuleerAfspraak(
 export async function verwijderAfspraak(
   afspraakId: string,
 ): Promise<ActieResultaat> {
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
   const afspraak = gegevens.afspraken.find((a) => a.id === afspraakId);
 
-  if (!afspraak || afspraak.medewerkerId !== medewerker.id) {
-    return { gelukt: false, melding: "Deze afspraak is niet gevonden." };
+  if (!afspraak || afspraak.medewerkerId !== gegevens.ik.id) {
+    return fout("Deze afspraak is niet gevonden.");
   }
 
-  gegevens.afspraken.splice(gegevens.afspraken.indexOf(afspraak), 1);
+  const { error } = await supabase
+    .from("afspraken")
+    .delete()
+    .eq("id", afspraakId);
+  if (error) return fout("De afspraak kon niet worden verwijderd.", error);
 
   ververs();
   return { gelukt: true, melding: "Afspraak verwijderd." };
 }
+
+// ---------------------------------------------------------------------------
+// Klanten
+// ---------------------------------------------------------------------------
 
 export async function bewaarKlant(invoer: unknown): Promise<ActieResultaat> {
   const gecontroleerd = klantSchema.safeParse(invoer);
@@ -339,7 +377,8 @@ export async function bewaarKlant(invoer: unknown): Promise<ActieResultaat> {
   }
 
   const waarden = gecontroleerd.data;
-  const gegevens = opslag();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
 
   const bestaat = gegevens.klanten.some(
     (klant) =>
@@ -354,40 +393,56 @@ export async function bewaarKlant(invoer: unknown): Promise<ActieResultaat> {
     };
   }
 
-  const klant: Klant = {
-    id: nieuwId(),
-    naam: waarden.naam,
-    plaats: waarden.plaats,
-    adres: waarden.adres || null,
-    postcode: waarden.postcode || null,
-    land: "NL",
-    reistijdEnkelMinuten: waarden.reistijdEnkelMinuten,
-    reisafstandEnkelKm: waarden.reisafstandEnkelKm ?? null,
-    telefoonAlgemeen: waarden.telefoonAlgemeen || null,
-    emailAlgemeen: waarden.emailAlgemeen || null,
-    website: null,
-    notitie: null,
-    actief: true,
-  };
-  gegevens.klanten.push(klant);
+  const { data, error } = await supabase
+    .from("klanten")
+    .insert({
+      naam: waarden.naam,
+      plaats: waarden.plaats,
+      adres: waarden.adres || null,
+      postcode: waarden.postcode || null,
+      land: "NL",
+      reistijd_enkel_minuten: waarden.reistijdEnkelMinuten,
+      reisafstand_enkel_km: waarden.reisafstandEnkelKm ?? null,
+      telefoon_algemeen: waarden.telefoonAlgemeen || null,
+      email_algemeen: waarden.emailAlgemeen || null,
+      aangemaakt_door: gegevens.ik.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return fout("De school kon niet worden opgeslagen.", error ?? undefined);
+  }
 
   if (waarden.contactpersoonNaam) {
-    const contactpersoon: Contactpersoon = {
-      id: nieuwId(),
-      klantId: klant.id,
-      naam: waarden.contactpersoonNaam,
-      functie: waarden.contactpersoonFunctie || null,
-      telefoon: null,
-      email: waarden.contactpersoonEmail || null,
-      isPrimair: true,
-      notitie: null,
-    };
-    gegevens.contactpersonen.push(contactpersoon);
+    const { error: contactFout } = await supabase
+      .from("contactpersonen")
+      .insert({
+        klant_id: data.id,
+        naam: waarden.contactpersoonNaam,
+        functie: waarden.contactpersoonFunctie || null,
+        email: waarden.contactpersoonEmail || null,
+        is_primair: true,
+      });
+    if (contactFout) {
+      // De school staat er wel; alleen de contactpersoon niet.
+      ververs();
+      return {
+        gelukt: true,
+        id: data.id,
+        melding:
+          "School toegevoegd, maar de contactpersoon kon niet worden opgeslagen.",
+      };
+    }
   }
 
   ververs();
-  return { gelukt: true, id: klant.id, melding: "School toegevoegd." };
+  return { gelukt: true, id: data.id, melding: "School toegevoegd." };
 }
+
+// ---------------------------------------------------------------------------
+// Handmatige uren
+// ---------------------------------------------------------------------------
 
 export async function bewaarUrenregel(
   invoer: unknown,
@@ -402,19 +457,19 @@ export async function bewaarUrenregel(
   }
 
   const waarden = gecontroleerd.data;
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
 
-  gegevens.urenregels.push({
-    id: nieuwId(),
-    medewerkerId: medewerker.id,
+  const { error } = await supabase.from("urenregels").insert({
+    medewerker_id: gegevens.ik.id,
     datum: waarden.datum,
-    afspraakId: null,
+    afspraak_id: null,
     categorie: waarden.categorie,
     uren: waarden.uren,
     toelichting: waarden.toelichting || null,
     bron: "handmatig",
   });
+  if (error) return fout("De uren konden niet worden geboekt.", error);
 
   ververs();
   return { gelukt: true, melding: "Uren geboekt." };
@@ -423,17 +478,21 @@ export async function bewaarUrenregel(
 export async function verwijderUrenregel(
   urenregelId: string,
 ): Promise<ActieResultaat> {
-  const gegevens = opslag();
-  const medewerker = huidigeMedewerker();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
   const regel = gegevens.urenregels.find(
-    (r) => r.id === urenregelId && r.medewerkerId === medewerker.id,
+    (r) => r.id === urenregelId && r.medewerkerId === gegevens.ik.id,
   );
 
   if (!regel || regel.bron !== "handmatig") {
-    return { gelukt: false, melding: "Deze urenregel is niet gevonden." };
+    return fout("Deze urenregel is niet gevonden.");
   }
 
-  gegevens.urenregels.splice(gegevens.urenregels.indexOf(regel), 1);
+  const { error } = await supabase
+    .from("urenregels")
+    .delete()
+    .eq("id", urenregelId);
+  if (error) return fout("De urenregel kon niet worden verwijderd.", error);
 
   ververs();
   return { gelukt: true, melding: "Urenregel verwijderd." };
@@ -444,9 +503,9 @@ export async function verwijderUrenregel(
 // ---------------------------------------------------------------------------
 
 /**
- * Wijzigt een bestaande afspraak niet met terugwerkende kracht: de uren zijn
- * bij het opslaan overgenomen in de afspraak zelf, zoals SPEC.md 4.6
- * voorschrijft. Een nieuwe soort of gewijzigde uren gelden dus vanaf nu.
+ * Wijzigt bestaande afspraken niet met terugwerkende kracht: de uren zijn bij
+ * het opslaan overgenomen in de afspraak zelf, zoals SPEC.md 4.6 voorschrijft.
+ * Een nieuwe soort of gewijzigde uren gelden dus vanaf nu.
  */
 export async function bewaarActiviteitsoort(
   invoer: unknown,
@@ -461,15 +520,16 @@ export async function bewaarActiviteitsoort(
   }
 
   const waarden = gecontroleerd.data;
-  const gegevens = opslag();
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
 
-  const bestaande = waarden.id
-    ? gegevens.activiteitsoorten.find((soort) => soort.id === waarden.id)
-    : undefined;
+  if (gegevens.ik.rol !== "beheerder") {
+    return fout("Alleen de beheerder kan soorten trainingen wijzigen.");
+  }
 
   const naamInGebruik = gegevens.activiteitsoorten.some(
     (soort) =>
-      soort.id !== bestaande?.id &&
+      soort.id !== waarden.id &&
       soort.naam.toLowerCase() === waarden.naam.toLowerCase(),
   );
   if (naamInGebruik) {
@@ -480,32 +540,36 @@ export async function bewaarActiviteitsoort(
     };
   }
 
-  const soort: Activiteitsoort = {
-    id: bestaande?.id ?? nieuwId(),
+  const rij = {
     naam: waarden.naam,
-    urenOpLocatie: waarden.urenOpLocatie,
-    urenVoorbereiding: waarden.urenVoorbereiding,
+    uren_op_locatie: waarden.urenOpLocatie,
+    uren_voorbereiding: waarden.urenVoorbereiding,
     kleur: waarden.kleur,
     volgorde: waarden.volgorde,
-    // Soorten die het beheer hier aanmaakt hebben altijd vaste uren; de
-    // medewerker vult namelijk geen uren meer in.
-    handmatigeUren: bestaande?.handmatigeUren ?? false,
     actief: waarden.actief,
   };
 
-  if (bestaande) {
-    gegevens.activiteitsoorten[gegevens.activiteitsoorten.indexOf(bestaande)] =
-      soort;
-  } else {
-    gegevens.activiteitsoorten.push(soort);
+  if (waarden.id) {
+    const { error } = await supabase
+      .from("activiteitsoorten")
+      .update(rij)
+      .eq("id", waarden.id);
+    if (error) return fout("De soort kon niet worden bijgewerkt.", error);
+    ververs();
+    return { gelukt: true, id: waarden.id, melding: "Soort bijgewerkt." };
   }
 
+  const { data, error } = await supabase
+    .from("activiteitsoorten")
+    // Soorten die het beheer hier aanmaakt hebben altijd vaste uren; de
+    // medewerker vult namelijk geen uren meer in.
+    .insert({ ...rij, handmatige_uren: false })
+    .select("id")
+    .single();
+  if (error) return fout("De soort kon niet worden opgeslagen.", error);
+
   ververs();
-  return {
-    gelukt: true,
-    id: soort.id,
-    melding: bestaande ? "Soort bijgewerkt." : "Soort toegevoegd.",
-  };
+  return { gelukt: true, id: data?.id, melding: "Soort toegevoegd." };
 }
 
 /**
@@ -515,28 +579,100 @@ export async function bewaarActiviteitsoort(
 export async function verwijderActiviteitsoort(
   soortId: string,
 ): Promise<ActieResultaat> {
-  const gegevens = opslag();
-  const soort = gegevens.activiteitsoorten.find((s) => s.id === soortId);
-  if (!soort) {
-    return { gelukt: false, melding: "Dit soort training is niet gevonden." };
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
+
+  if (gegevens.ik.rol !== "beheerder") {
+    return fout("Alleen de beheerder kan soorten trainingen verwijderen.");
   }
+
+  const soort = gegevens.activiteitsoorten.find((s) => s.id === soortId);
+  if (!soort) return fout("Dit soort training is niet gevonden.");
 
   const inGebruik = gegevens.afspraken.filter(
     (afspraak) => afspraak.activiteitsoortId === soortId,
   ).length;
 
   if (inGebruik > 0) {
-    return {
-      gelukt: false,
-      melding: `Er ${inGebruik === 1 ? "hangt 1 afspraak" : `hangen ${inGebruik} afspraken`} aan dit soort. Zet het op non-actief in plaats van verwijderen.`,
-    };
+    return fout(
+      `Er ${inGebruik === 1 ? "hangt 1 afspraak" : `hangen ${inGebruik} afspraken`} aan dit soort. Zet het op non-actief in plaats van verwijderen.`,
+    );
   }
 
-  gegevens.activiteitsoorten.splice(
-    gegevens.activiteitsoorten.indexOf(soort),
-    1,
-  );
+  const { error } = await supabase
+    .from("activiteitsoorten")
+    .delete()
+    .eq("id", soortId);
+  if (error) return fout("De soort kon niet worden verwijderd.", error);
 
   ververs();
   return { gelukt: true, melding: "Soort verwijderd." };
+}
+
+// ---------------------------------------------------------------------------
+// Beheer: contract van een medewerker (SPEC.md 4.2 en 6.6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Legt de contracturen per week vast. De jaarnorm wordt altijd berekend als
+ * `norm_fulltime × werktijdfactor` en nooit los ingevoerd (SPEC.md 4.2).
+ *
+ * Bij een urenwijziging hoort een nieuw contract met een nieuwe ingangsdatum;
+ * het lopende contract krijgt dan een einddatum.
+ */
+export async function bewaarContract(
+  profielId: string,
+  urenPerWeek: number,
+  ingangsdatum: string,
+): Promise<ActieResultaat> {
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
+
+  if (gegevens.ik.rol !== "beheerder") {
+    return fout("Alleen de beheerder kan contracten vastleggen.");
+  }
+  if (!Number.isFinite(urenPerWeek) || urenPerWeek <= 0 || urenPerWeek > 40) {
+    return fout("Vul een aantal uren per week tussen 0 en 40 in.");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ingangsdatum)) {
+    return fout("Vul een geldige ingangsdatum in.");
+  }
+
+  const lopend = gegevens.contracten
+    .filter((contract) => contract.profielId === profielId)
+    .filter((contract) => !contract.einddatum)
+    .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum))[0];
+
+  if (lopend) {
+    if (lopend.ingangsdatum === ingangsdatum) {
+      const { error } = await supabase
+        .from("contracten")
+        .update({ uren_per_week: urenPerWeek })
+        .eq("id", lopend.id);
+      if (error) return fout("Het contract kon niet worden bijgewerkt.", error);
+      ververs();
+      return { gelukt: true, melding: "Contract bijgewerkt." };
+    }
+
+    // Het vorige contract loopt tot de dag vóór de nieuwe ingangsdatum.
+    const dagErvoor = new Date(ingangsdatum);
+    dagErvoor.setDate(dagErvoor.getDate() - 1);
+    const { error } = await supabase
+      .from("contracten")
+      .update({ einddatum: dagErvoor.toISOString().slice(0, 10) })
+      .eq("id", lopend.id);
+    if (error) {
+      return fout("Het vorige contract kon niet worden afgesloten.", error);
+    }
+  }
+
+  const { error } = await supabase.from("contracten").insert({
+    profiel_id: profielId,
+    ingangsdatum,
+    uren_per_week: urenPerWeek,
+  });
+  if (error) return fout("Het contract kon niet worden opgeslagen.", error);
+
+  ververs();
+  return { gelukt: true, melding: "Contract vastgelegd." };
 }

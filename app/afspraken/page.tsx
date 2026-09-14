@@ -19,19 +19,22 @@ export const metadata = {
 export const dynamic = "force-dynamic";
 
 /** Hoofdscherm van de medewerker (SPEC.md 6.2). */
-export default function AfsprakenPagina() {
-  const medewerker = huidigeMedewerker();
+export default async function AfsprakenPagina() {
+  const medewerker = await huidigeMedewerker();
 
   return (
     <>
-      <Hoofdnavigatie medewerker={medewerker} toonBeheer />
+      <Hoofdnavigatie
+        medewerker={medewerker}
+        toonBeheer={medewerker.rol === "beheerder"}
+      />
       <main className="flex min-h-0 flex-1 flex-col">
         <Werkblad
-          klanten={haalKlanten()}
-          contactpersonen={haalContactpersonen()}
-          trainingsoorten={haalTrainingsoorten()}
-          afspraken={haalAfsprakenMetContext(medewerker.id)}
-          nietInzetbareDagen={haalNietInzetbareDagen()}
+          klanten={await haalKlanten()}
+          contactpersonen={await haalContactpersonen()}
+          trainingsoorten={await haalTrainingsoorten()}
+          afspraken={await haalAfsprakenMetContext(medewerker.id)}
+          nietInzetbareDagen={await haalNietInzetbareDagen()}
         />
       </main>
     </>

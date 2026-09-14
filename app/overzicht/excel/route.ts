@@ -1,10 +1,10 @@
 import ExcelJS from "exceljs";
 
-import { huidigeMedewerker, urenVanAfspraak } from "@/lib/data/queries";
+import { huidigeMedewerker, urenVanAfspraakSync } from "@/lib/data/queries";
 import { formatteerDatum } from "@/lib/formatteer";
 import {
+  haalOverzicht,
   leesFilters,
-  selecteerAfspraken,
   STATUSLABELS,
 } from "@/lib/export/overzicht";
 
@@ -25,8 +25,11 @@ export async function GET(verzoek: Request) {
     new URL(verzoek.url).searchParams.entries(),
   );
   const filters = leesFilters(parameters);
-  const medewerker = huidigeMedewerker();
-  const afspraken = selecteerAfspraken(medewerker.id, filters);
+  const medewerker = await huidigeMedewerker();
+  const { afspraken, instellingen } = await haalOverzicht(
+    medewerker.id,
+    filters,
+  );
 
   const werkboek = new ExcelJS.Workbook();
   werkboek.creator = "Portaal De Kleuterspecialist";
@@ -61,7 +64,7 @@ export async function GET(verzoek: Request) {
   kop.height = 20;
 
   for (const afspraak of afspraken) {
-    const uren = urenVanAfspraak(afspraak);
+    const uren = urenVanAfspraakSync(instellingen, afspraak);
     blad.addRow({
       datum: afspraak.datum
         ? formatteerDatum(afspraak.datum)

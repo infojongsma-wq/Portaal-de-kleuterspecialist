@@ -1,6 +1,8 @@
 import { AlertTriangle, Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
+import { ContractFormulier } from "@/components/beheer/contract-formulier";
+import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,13 +14,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import {
   haalAlleActiviteitsoorten,
   haalContract,
   haalInstellingen,
   haalNietInzetbareDagen,
   haalProfielen,
+  isBeheerder,
   jaarnormBalans,
   urenPerCategorie,
 } from "@/lib/data/queries";
@@ -34,18 +36,56 @@ export const metadata = { title: "Beheer · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
 
 /** Beheerdersportaal (SPEC.md 6.6). */
-export default function BeheerPagina() {
+export default async function BeheerPagina() {
   const nu = new Date();
   const vandaag = naarIsoDatum(nu);
   const jaar = nu.getFullYear();
   const jaarStart = `${jaar}-01-01`;
   const jaarEind = `${jaar}-12-31`;
 
-  const instellingen = haalInstellingen();
-  const medewerkers = haalProfielen().filter(
-    (profiel) => profiel.rol === "medewerker",
+  const beheerder = await isBeheerder();
+
+  if (!beheerder) {
+    return (
+      <Pagina titel="Beheer">
+        <Card className="p-6 text-sm text-muted-foreground">
+          Dit scherm is alleen voor de beheerder.
+        </Card>
+      </Pagina>
+    );
+  }
+
+  const [instellingen, profielen, nietInzetbareDagen, soorten] =
+    await Promise.all([
+      haalInstellingen(),
+      haalProfielen(),
+      haalNietInzetbareDagen(),
+      haalAlleActiviteitsoorten(),
+    ]);
+
+  // Alles per medewerker vooraf ophalen; in de opmaak zelf valt niet te wachten.
+  const medewerkers = await Promise.all(
+    profielen
+      .filter((profiel) => profiel.rol === "medewerker")
+      .map(async (medewerker) => ({
+        profiel: medewerker,
+        balans: await jaarnormBalans(medewerker.id, jaar, vandaag),
+        contract: await haalContract(medewerker.id, vandaag),
+        categorieen: await urenPerCategorie(
+          medewerker.id,
+          jaarStart,
+          jaarEind,
+          "gerealiseerd",
+        ),
+      })),
   );
-  const nietInzetbareDagen = haalNietInzetbareDagen();
+
+  const contractenVanIedereen = await Promise.all(
+    profielen.map(async (profiel) => ({
+      profiel,
+      contract: await haalContract(profiel.id, vandaag),
+    })),
+  );
 
   const perJaar = new Map<number, number>();
   for (const dag of nietInzetbareDagen) {
@@ -60,35 +100,34 @@ export default function BeheerPagina() {
     >
       <div className="grid gap-5">
         {/* Urenverantwoording per medewerker */}
-        {medewerkers.map((medewerker) => {
-          const balans = jaarnormBalans(medewerker.id, jaar, vandaag);
-          const contract = haalContract(medewerker.id, vandaag);
-          const categorieen = urenPerCategorie(
-            medewerker.id,
-            jaarStart,
-            jaarEind,
-            "gerealiseerd",
-          );
+        {medewerkers.map(({ profiel, balans, contract, categorieen }) => {
           const totaalCategorieen = categorieen.reduce(
             (som, regel) => som + regel.uren,
             0,
           );
 
           return (
-            <Card key={medewerker.id}>
+            <Card key={profiel.id}>
               <CardHeader>
                 <CardTitle>
-                  Urenverantwoording {jaar} — {medewerker.voornaam}{" "}
-                  {medewerker.achternaam}
+                  Urenverantwoording {jaar} — {profiel.voornaam}{" "}
+                  {profiel.achternaam}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {contract
                     ? `${formatteerUren(contract.urenPerWeek)} uur per week vanaf ${formatteerDatum(contract.ingangsdatum)} · fulltimenorm ${formatteerUren(contract.normFulltime)} uur`
-                    : "Geen contract vastgelegd."}
+                    : "Nog geen contract vastgelegd."}
                 </p>
               </CardHeader>
 
               <CardContent className="grid gap-6">
+                <ContractFormulier
+                  profielId={profiel.id}
+                  urenPerWeek={contract?.urenPerWeek ?? null}
+                  ingangsdatum={contract?.ingangsdatum ?? null}
+                  vandaag={vandaag}
+                />
+
                 {balans ? (
                   <>
                     <Voortgangsbalk
@@ -123,7 +162,9 @@ export default function BeheerPagina() {
                               </TableCell>
                             </TableRow>
                             <TableRow>
-                              <TableCell className="font-medium">Saldo</TableCell>
+                              <TableCell className="font-medium">
+                                Saldo
+                              </TableCell>
                               <TableCell
                                 className={`text-right font-medium tabular-nums ${
                                   balans.saldo >= 0
@@ -152,9 +193,7 @@ export default function BeheerPagina() {
                             {categorieen.map((regel) => (
                               <li key={regel.categorie} className="text-sm">
                                 <div className="flex justify-between gap-4">
-                                  <span>
-                                    {CATEGORIELABELS[regel.categorie]}
-                                  </span>
+                                  <span>{CATEGORIELABELS[regel.categorie]}</span>
                                   <span className="tabular-nums">
                                     {formatteerUren(regel.uren)}
                                   </span>
@@ -190,7 +229,8 @@ export default function BeheerPagina() {
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Zonder contract is er geen norm te berekenen.
+                    Zonder contract is er geen norm te berekenen. Leg hierboven
+                    de uren per week vast.
                   </p>
                 )}
               </CardContent>
@@ -214,32 +254,29 @@ export default function BeheerPagina() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {haalProfielen().map((profiel) => {
-                const contract = haalContract(profiel.id, vandaag);
-                return (
-                  <TableRow key={profiel.id}>
-                    <TableCell className="font-medium">
-                      {profiel.voornaam} {profiel.achternaam}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {profiel.email}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {profiel.rol}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="tabular-nums">
-                      {profiel.inDienstVanaf
-                        ? formatteerDatum(profiel.inDienstVanaf)
-                        : "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {contract ? formatteerUren(contract.urenPerWeek) : "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {contractenVanIedereen.map(({ profiel, contract }) => (
+                <TableRow key={profiel.id}>
+                  <TableCell className="font-medium">
+                    {profiel.voornaam} {profiel.achternaam}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {profiel.email}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="capitalize">
+                      {profiel.rol}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="tabular-nums">
+                    {profiel.inDienstVanaf
+                      ? formatteerDatum(profiel.inDienstVanaf)
+                      : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {contract ? formatteerUren(contract.urenPerWeek) : "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </Card>
@@ -256,7 +293,7 @@ export default function BeheerPagina() {
                 vastgelegd.
               </p>
             </CardHeader>
-            <SoortenBeheer soorten={haalAlleActiviteitsoorten()} />
+            <SoortenBeheer soorten={soorten} />
           </Card>
 
           {/* Instellingen */}
@@ -301,22 +338,28 @@ export default function BeheerPagina() {
             </p>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <ul className="grid gap-1.5 text-sm">
-              {[...perJaar.entries()]
-                .sort(([a], [b]) => a - b)
-                .map(([dagJaar, aantal]) => (
-                  <li key={dagJaar} className="flex justify-between gap-4">
-                    <span>{dagJaar}</span>
-                    <span className="tabular-nums">
-                      {aantal} dagen vastgelegd
-                    </span>
-                  </li>
-                ))}
-            </ul>
+            {perJaar.size === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Er staan nog geen vakantiedagen in. Zolang dat zo is, rekent het
+                portaal met alle weekdagen en klopt de jaarnorm niet.
+              </p>
+            ) : (
+              <ul className="grid gap-1.5 text-sm">
+                {[...perJaar.entries()]
+                  .sort(([a], [b]) => a - b)
+                  .map(([dagJaar, aantal]) => (
+                    <li key={dagJaar} className="flex justify-between gap-4">
+                      <span>{dagJaar}</span>
+                      <span className="tabular-nums">
+                        {aantal} dagen vastgelegd
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
             <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-              De dagen in dit prototype zijn bij benadering ingevuld en zijn
-              geen officiële vakantiedata. Vul per schooljaar de echte data van
-              regio Noord in voordat de urenverantwoording wordt gebruikt.
+              Vul per schooljaar de officiële vakantiedata van regio Noord in
+              voordat de urenverantwoording wordt gebruikt.
             </p>
           </CardContent>
         </Card>
@@ -326,21 +369,21 @@ export default function BeheerPagina() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="size-4" aria-hidden />
-              Nog niet in dit prototype
+              Nog niet in dit portaal
             </CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="grid gap-1.5 text-sm text-muted-foreground">
+              <li>Medewerkers uitnodigen per e-mail.</li>
               <li>
-                Medewerkers uitnodigen per e-mail en contracten bewerken — vraagt
-                Supabase Auth (fase 1 en 4).
+                Niet-inzetbare dagen en instellingen wijzigen — nu alleen te
+                lezen.
               </li>
               <li>
-                Instellingen en niet-inzetbare dagen bewerken — nu alleen te
-                lezen. Soorten trainingen zijn hierboven wél te beheren.
+                Wijzigingslog — de databasetriggers vullen hem al, het scherm
+                ontbreekt nog.
               </li>
-              <li>Wijzigingslog — de databasetriggers staan klaar in de migraties.</li>
-              <li>Export naar Excel en PDF — fase 4.</li>
+              <li>Tweestapsverificatie voor de beheerder.</li>
             </ul>
           </CardContent>
         </Card>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 
 import { bewaarUrenregel, verwijderUrenregel } from "@/app/afspraken/acties";
-import { Keuzelijst } from "@/components/pagina";
+import { Keuzelijst } from "@/components/ui/keuzelijst";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Datumveld } from "@/components/ui/datumveld";

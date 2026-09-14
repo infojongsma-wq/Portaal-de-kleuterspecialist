@@ -16,19 +16,18 @@ npm run test     # unittests, waaronder de rekenregels
 npm run build    # productiebuild — moet slagen vóór elke commit
 ```
 
-## Nog geen database
+## Database en inloggen
 
-Er is nog geen Supabase-omgeving gekoppeld. Het portaal start leeg en houdt de
-gegevens in het geheugen van de server (`lib/data/opslag.ts`). Lokaal werkt dat;
-op Vercel draaien meerdere servers die dat geheugen niet delen, waardoor
-wijzigingen verdwijnen.
+Het portaal draait op Supabase: Postgres voor de gegevens, Supabase Auth voor
+het inloggen. Zonder de omgevingsvariabelen uit `.env.example` start het niet.
+**Zie `PUBLICEREN.md`** voor het inrichten.
 
-**Zie `PUBLICEREN.md`** voor de stappen om Supabase te koppelen. Dat lost het
-bewaren én het inloggen in één keer op.
-
-De schermen schrijven nu al via server actions met `zod`-validatie — dezelfde
-weg die straks naar Postgres loopt. Bij de overstap verandert alleen de
-implementatie achter `lib/data/queries.ts`.
+- Lezen gaat via `lib/data/werkset.ts`, dat per aanvraag in één keer ophaalt wat
+  de ingelogde gebruiker mag zien. Row Level Security in Postgres bepaalt dat,
+  niet de app.
+- Schrijven gaat uitsluitend via server actions met `zod`-validatie.
+- De verbinding gebruikt altijd de sessie van de gebruiker, nooit de
+  `service_role`-sleutel — anders zou RLS worden omzeild.
 
 **Nooit echte persoonsgegevens in de dev-omgeving.**
 
@@ -40,7 +39,8 @@ implementatie achter `lib/data/queries.ts`.
 | `components/ui/` | shadcn/ui-componenten |
 | `components/` | Schermonderdelen |
 | `lib/uren/` | **Rekenregels uit `SPEC.md` hoofdstuk 5.** Pure functies, geen databasetoegang. |
-| `lib/data/` | Datalaag: servergeheugen nu, Supabase later |
+| `lib/data/` | Datalaag: `werkset.ts` haalt op, `queries.ts` rekent |
+| `lib/supabase/` | Verbindingen voor server, browser en proxy |
 | `lib/export/` | Selectie en kolommen van het overzicht, gedeeld door scherm en Excel |
 | `lib/validatie/` | `zod`-schema's voor de server actions |
 | `supabase/migrations/` | Databasemigraties |
@@ -55,6 +55,9 @@ database. Zie de tabel in `CLAUDE.md`.
 cp .env.example .env.local   # en vul de projectgegevens in
 npx supabase db push         # migraties toepassen op de dev-database
 ```
+
+Zonder opdrachtregel: plak `supabase/volledig-schema.sql` in de SQL Editor van
+een leeg project. Zie `PUBLICEREN.md`.
 
 ## Afwijkingen van CLAUDE.md
 

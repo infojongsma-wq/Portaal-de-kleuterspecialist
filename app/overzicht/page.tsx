@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { ArrowDown, ArrowUp, FileSpreadsheet } from "lucide-react";
 
-import { Keuzelijst, Pagina } from "@/components/pagina";
+import { Pagina } from "@/components/pagina";
+import { Keuzelijst } from "@/components/ui/keuzelijst";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,12 +21,12 @@ import {
   haalActiviteitsoorten,
   haalKlanten,
   huidigeMedewerker,
-  urenVanAfspraak,
+  urenVanAfspraakSync,
 } from "@/lib/data/queries";
 import { formatteerDatum, formatteerUren } from "@/lib/formatteer";
 import {
+  haalOverzicht,
   leesFilters,
-  selecteerAfspraken,
   STATUSLABELS,
   zoekreeks,
   type Sorteerveld,
@@ -53,15 +54,13 @@ export default async function OverzichtPagina({
   const { vanaf, totEnMet, klantId, soortId, status, sorteer, aflopend } =
     filters;
 
-  const medewerker = huidigeMedewerker();
-  const klanten = haalKlanten();
-  const soorten = haalActiviteitsoorten();
-  const afspraken = selecteerAfspraken(medewerker.id, filters);
-
-  const totaal = afspraken.reduce(
-    (som, afspraak) => som + urenVanAfspraak(afspraak).totaal,
-    0,
-  );
+  const medewerker = await huidigeMedewerker();
+  const [klanten, soorten, overzicht] = await Promise.all([
+    haalKlanten(),
+    haalActiviteitsoorten(),
+    haalOverzicht(medewerker.id, filters),
+  ]);
+  const { afspraken, instellingen, totaalUren: totaal } = overzicht;
 
   return (
     <Pagina
@@ -163,7 +162,7 @@ export default async function OverzichtPagina({
               </TableRow>
             ) : (
               afspraken.map((afspraak) => {
-                const uren = urenVanAfspraak(afspraak);
+                const uren = urenVanAfspraakSync(instellingen, afspraak);
                 return (
                   <TableRow key={afspraak.id}>
                     <TableCell className="whitespace-nowrap tabular-nums">

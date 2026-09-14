@@ -28,8 +28,8 @@ export const metadata = { title: "Mijn uren · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
 
 /** Eigen uren per week, maand en jaar (SPEC.md 6.5). */
-export default function MijnUrenPagina() {
-  const medewerker = huidigeMedewerker();
+export default async function MijnUrenPagina() {
+  const medewerker = await huidigeMedewerker();
   const nu = new Date();
   const vandaag = naarIsoDatum(nu);
   const jaar = nu.getFullYear();
@@ -39,19 +39,34 @@ export default function MijnUrenPagina() {
   const maandStart = naarIsoDatum(startOfMonth(nu));
   const maandEind = naarIsoDatum(endOfMonth(nu));
 
-  const balans = jaarnormBalans(medewerker.id, jaar, vandaag);
-  const contract = haalContract(medewerker.id, vandaag);
+  const [
+    balans,
+    contract,
+    weekGerealiseerd,
+    weekGepland,
+    maandGerealiseerd,
+    maandGepland,
+    urenregels,
+  ] = await Promise.all([
+    jaarnormBalans(medewerker.id, jaar, vandaag),
+    haalContract(medewerker.id, vandaag),
+    urenInPeriode(medewerker.id, weekStart, weekEind, "gerealiseerd"),
+    urenInPeriode(medewerker.id, weekStart, weekEind, "gepland"),
+    urenInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
+    urenInPeriode(medewerker.id, maandStart, maandEind, "gepland"),
+    urenregelsInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
+  ]);
 
   const perioden = [
     {
       label: `Deze week (week ${weeknummer(vandaag)})`,
-      gerealiseerd: urenInPeriode(medewerker.id, weekStart, weekEind, "gerealiseerd"),
-      gepland: urenInPeriode(medewerker.id, weekStart, weekEind, "gepland"),
+      gerealiseerd: weekGerealiseerd,
+      gepland: weekGepland,
     },
     {
       label: "Deze maand",
-      gerealiseerd: urenInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
-      gepland: urenInPeriode(medewerker.id, maandStart, maandEind, "gepland"),
+      gerealiseerd: maandGerealiseerd,
+      gepland: maandGepland,
     },
     {
       label: `Dit jaar (${jaar})`,
@@ -178,15 +193,7 @@ export default function MijnUrenPagina() {
             </p>
           </CardHeader>
           <CardContent>
-            <UrenregelFormulier
-              vandaag={vandaag}
-              regels={urenregelsInPeriode(
-                medewerker.id,
-                maandStart,
-                maandEind,
-                "gerealiseerd",
-              )}
-            />
+            <UrenregelFormulier vandaag={vandaag} regels={urenregels} />
           </CardContent>
         </Card>
       </div>

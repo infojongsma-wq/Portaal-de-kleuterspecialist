@@ -1,8 +1,9 @@
 import {
   haalAfsprakenMetContext,
-  urenVanAfspraak,
+  haalInstellingen,
+  urenVanAfspraakSync,
 } from "@/lib/data/queries";
-import type { AfspraakMetContext } from "@/lib/data/types";
+import type { AfspraakMetContext, Instellingen } from "@/lib/data/types";
 import type { AfspraakStatus } from "@/lib/uren";
 
 /**
@@ -54,28 +55,56 @@ export function leesFilters(
   };
 }
 
-export function selecteerAfspraken(
+export interface Overzicht {
+  afspraken: AfspraakMetContext[];
+  instellingen: Instellingen;
+  totaalUren: number;
+}
+
+export async function haalOverzicht(
   medewerkerId: string,
   filters: OverzichtFilters,
-): AfspraakMetContext[] {
-  return haalAfsprakenMetContext(medewerkerId)
+): Promise<Overzicht> {
+  const [alle, instellingen] = await Promise.all([
+    haalAfsprakenMetContext(medewerkerId),
+    haalInstellingen(),
+  ]);
+
+  const afspraken = alle
     // Een afspraak zonder datum valt buiten elke periode; is er geen
     // periodefilter, dan hoort hij er wel gewoon bij te staan.
-    .filter((afspraak) => !filters.vanaf || (afspraak.datum ?? "") >= filters.vanaf)
+    .filter(
+      (afspraak) => !filters.vanaf || (afspraak.datum ?? "") >= filters.vanaf,
+    )
     .filter(
       (afspraak) =>
         !filters.totEnMet ||
         (!!afspraak.datum && afspraak.datum <= filters.totEnMet),
     )
-    .filter((afspraak) => !filters.klantId || afspraak.klantId === filters.klantId)
     .filter(
-      (afspraak) => !filters.soortId || afspraak.activiteitsoortId === filters.soortId,
+      (afspraak) => !filters.klantId || afspraak.klantId === filters.klantId,
+    )
+    .filter(
+      (afspraak) =>
+        !filters.soortId || afspraak.activiteitsoortId === filters.soortId,
     )
     .filter((afspraak) => !filters.status || afspraak.status === filters.status)
-    .sort(vergelijker(filters.sorteer, filters.aflopend));
+    .sort(vergelijker(instellingen, filters.sorteer, filters.aflopend));
+
+  const totaal = afspraken.reduce(
+    (som, afspraak) =>
+      som + urenVanAfspraakSync(instellingen, afspraak).totaal,
+    0,
+  );
+
+  return { afspraken, instellingen, totaalUren: totaal };
 }
 
-export function vergelijker(veld: Sorteerveld, aflopend: boolean) {
+function vergelijker(
+  instellingen: Instellingen,
+  veld: Sorteerveld,
+  aflopend: boolean,
+) {
   const richting = aflopend ? -1 : 1;
   return (a: AfspraakMetContext, b: AfspraakMetContext) => {
     const uitkomst = (() => {
@@ -90,7 +119,10 @@ export function vergelijker(veld: Sorteerveld, aflopend: boolean) {
         case "titel":
           return a.titel.localeCompare(b.titel, "nl");
         case "uren":
-          return urenVanAfspraak(a).totaal - urenVanAfspraak(b).totaal;
+          return (
+            urenVanAfspraakSync(instellingen, a).totaal -
+            urenVanAfspraakSync(instellingen, b).totaal
+          );
         case "status":
           return a.status.localeCompare(b.status, "nl");
         default:

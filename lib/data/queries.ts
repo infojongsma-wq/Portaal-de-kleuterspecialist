@@ -1,18 +1,18 @@
-import { berekenJaarnorm, type JaarnormUitkomst } from "@/lib/uren";
 import {
+  berekenDagen,
+  berekenJaarnorm,
+  declarabeleReistijdUren,
   teltLocatieUren,
   teltReistijd,
   teltVoorbereidingUren,
+  totaalUren,
+  type AfspraakInvoer,
+  type JaarnormUitkomst,
+  type Telwijze,
+  type UrenCategorie,
+  type UrenregelInvoer,
 } from "@/lib/uren";
-import { berekenDagen, totaalUren } from "@/lib/uren";
-import { declarabeleReistijdUren } from "@/lib/uren";
-import type {
-  AfspraakInvoer,
-  Telwijze,
-  UrenCategorie,
-  UrenregelInvoer,
-} from "@/lib/uren";
-import { opslag } from "./opslag";
+import { werkset, type Werkset } from "./werkset";
 import type {
   Activiteitsoort,
   AfgeleideUrenregel,
@@ -30,103 +30,22 @@ import type {
 /**
  * Leesfuncties voor de schermen. Draaien op de server.
  *
- * Bij de overstap naar Supabase blijven de handtekeningen gelijk en verandert
- * alleen de implementatie: `opslag()` wordt dan een query op Postgres.
- */
-
-/**
- * De ingelogde gebruiker. Zolang er geen Supabase Auth is, is dat vast de
- * demomedewerker. De rol komt hoe dan ook uit `profielen` en nooit uit een
- * claim die de client kan zetten (SPEC.md 7).
- */
-export function huidigeMedewerker(): Profiel {
-  const profiel = opslag().profielen.find((p) => p.rol === "medewerker");
-  if (!profiel) throw new Error("Geen medewerkersprofiel gevonden.");
-  return profiel;
-}
-
-export function huidigeBeheerder(): Profiel | null {
-  return opslag().profielen.find((p) => p.rol === "beheerder") ?? null;
-}
-
-export function haalProfielen(): Profiel[] {
-  return opslag().profielen;
-}
-
-export function haalInstellingen(): Instellingen {
-  return opslag().instellingen;
-}
-
-export function haalActiviteitsoorten(): Activiteitsoort[] {
-  return opslag()
-    .activiteitsoorten.filter((soort) => soort.actief)
-    .sort((a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"));
-}
-
-/** Ook de soorten die op non-actief staan; voor het beheerdersportaal. */
-export function haalAlleActiviteitsoorten(): Activiteitsoort[] {
-  return [...opslag().activiteitsoorten].sort(
-    (a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"),
-  );
-}
-
-/**
- * De soorten die de medewerker kan kiezen: alleen die met vaste uren.
+ * Elke functie haalt de werkset op — alles wat de ingelogde gebruiker mag zien,
+ * in één keer uit Supabase — en rekent daar verder in het geheugen mee. Wát er
+ * in die werkset zit bepaalt Row Level Security in Postgres; de functies
+ * hieronder filteren dus op bruikbaarheid, niet op bevoegdheid.
  *
- * Soorten met `handmatigeUren` vragen om zelf ingevulde uren, en die velden
- * ziet de medewerker niet meer. Ze blijven wel bestaan voor het beheer.
+ * De werkset is per aanvraag gecachet, dus meerdere aanroepen kosten niet
+ * meerdere databasebezoeken.
+ *
+ * Bovenaan staan zuivere hulpfuncties die op een meegegeven werkset werken.
+ * Die zijn bewust synchroon: ze dienen als sorteer- en omzetfuncties, en daar
+ * kun je niet op wachten.
  */
-export function haalTrainingsoorten(): Activiteitsoort[] {
-  return haalActiviteitsoorten().filter((soort) => !soort.handmatigeUren);
-}
 
-export function haalKlanten(): Klant[] {
-  return opslag()
-    .klanten.filter((klant) => klant.actief)
-    .sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
-}
-
-export function haalKlant(klantId: string): Klant | null {
-  return opslag().klanten.find((klant) => klant.id === klantId) ?? null;
-}
-
-/** Zoekt op naam en plaats, vanaf twee tekens (SPEC.md 6.2). */
-export function zoekKlanten(term: string): Klant[] {
-  const gezocht = term.trim().toLowerCase();
-  if (gezocht.length < 2) return [];
-  return haalKlanten().filter(
-    (klant) =>
-      klant.naam.toLowerCase().includes(gezocht) ||
-      klant.plaats.toLowerCase().includes(gezocht),
-  );
-}
-
-export function haalContactpersonen(klantId?: string): Contactpersoon[] {
-  const alle = opslag().contactpersonen;
-  const gefilterd = klantId
-    ? alle.filter((persoon) => persoon.klantId === klantId)
-    : alle;
-  return [...gefilterd].sort((a, b) => {
-    if (a.isPrimair !== b.isPrimair) return a.isPrimair ? -1 : 1;
-    return a.naam.localeCompare(b.naam, "nl");
-  });
-}
-
-export function haalNietInzetbareDagen(): NietInzetbareDag[] {
-  return [...opslag().nietInzetbareDagen].sort((a, b) =>
-    a.datum.localeCompare(b.datum),
-  );
-}
-
-export function haalNietInzetbareDatums(): string[] {
-  return opslag().nietInzetbareDagen.map((dag) => dag.datum);
-}
-
-export function haalAfspraken(medewerkerId: string): Afspraak[] {
-  return opslag()
-    .afspraken.filter((afspraak) => afspraak.medewerkerId === medewerkerId)
-    .sort(opDatum);
-}
+// ---------------------------------------------------------------------------
+// Zuivere hulpfuncties
+// ---------------------------------------------------------------------------
 
 /** Sorteert op datum; afspraken zonder datum komen achteraan. */
 export function opDatum(
@@ -147,84 +66,6 @@ function binnenPeriode(
 ): boolean {
   return datum !== null && datum >= vanaf && datum <= totEnMet;
 }
-
-export function haalAfspraak(afspraakId: string): Afspraak | null {
-  return opslag().afspraken.find((a) => a.id === afspraakId) ?? null;
-}
-
-/** Afspraken met klant, contactpersoon en activiteitsoort erbij. */
-export function haalAfsprakenMetContext(
-  medewerkerId: string,
-): AfspraakMetContext[] {
-  const { klanten, contactpersonen, activiteitsoorten } = opslag();
-
-  return haalAfspraken(medewerkerId).flatMap((afspraak) => {
-    const klant = klanten.find((k) => k.id === afspraak.klantId);
-    const activiteitsoort = activiteitsoorten.find(
-      (s) => s.id === afspraak.activiteitsoortId,
-    );
-    if (!klant || !activiteitsoort) return [];
-
-    return [
-      {
-        ...afspraak,
-        klant,
-        activiteitsoort,
-        contactpersoon:
-          contactpersonen.find((p) => p.id === afspraak.contactpersoonId) ??
-          null,
-      },
-    ];
-  });
-}
-
-export function haalAfsprakenVoorKlant(klantId: string): AfspraakMetContext[] {
-  return haalAfsprakenMetContext(huidigeMedewerker().id).filter(
-    (afspraak) => afspraak.klantId === klantId,
-  );
-}
-
-/**
- * De trainingen die met een school zijn afgesproken: alles wat nog loopt, met
- * of zonder datum. Geannuleerde en verzette afspraken vallen eruit, voltooide
- * ook — die staan onder "uitgevoerd".
- */
-export function haalAfgesprokenTrainingen(
-  klantId: string,
-): AfspraakMetContext[] {
-  return haalAfsprakenVoorKlant(klantId)
-    .filter((afspraak) => afspraak.status === "gepland")
-    .sort(opDatum);
-}
-
-export function haalUrenregels(medewerkerId: string): Urenregel[] {
-  return opslag()
-    .urenregels.filter((regel) => regel.medewerkerId === medewerkerId)
-    .sort((a, b) => a.datum.localeCompare(b.datum));
-}
-
-export function haalHandmatigeUrenregels(medewerkerId: string): Urenregel[] {
-  return haalUrenregels(medewerkerId).filter(
-    (regel) => regel.bron === "handmatig",
-  );
-}
-
-/** Het contract dat op een datum geldt. */
-export function haalContract(
-  medewerkerId: string,
-  datum: string,
-): Contract | null {
-  const contracten = opslag()
-    .contracten.filter((contract) => contract.profielId === medewerkerId)
-    .filter((contract) => contract.ingangsdatum <= datum)
-    .filter((contract) => !contract.einddatum || contract.einddatum >= datum)
-    .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum));
-  return contracten[0] ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Omzetten naar de invoer die `lib/uren` verwacht
-// ---------------------------------------------------------------------------
 
 export function naarAfspraakInvoer(afspraak: Afspraak): AfspraakInvoer {
   return {
@@ -247,16 +88,266 @@ export function naarUrenregelInvoer(regel: Urenregel): UrenregelInvoer {
   };
 }
 
+function afsprakenVan(gegevens: Werkset, medewerkerId: string): Afspraak[] {
+  return gegevens.afspraken
+    .filter((afspraak) => afspraak.medewerkerId === medewerkerId)
+    .sort(opDatum);
+}
+
+function handmatigeRegelsVan(
+  gegevens: Werkset,
+  medewerkerId: string,
+): Urenregel[] {
+  return gegevens.urenregels
+    .filter((regel) => regel.medewerkerId === medewerkerId)
+    .filter((regel) => regel.bron === "handmatig")
+    .sort((a, b) => a.datum.localeCompare(b.datum));
+}
+
+function contractOp(
+  gegevens: Werkset,
+  medewerkerId: string,
+  datum: string,
+): Contract | null {
+  const passend = gegevens.contracten
+    .filter((contract) => contract.profielId === medewerkerId)
+    .filter((contract) => contract.ingangsdatum <= datum)
+    .filter((contract) => !contract.einddatum || contract.einddatum >= datum)
+    .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum));
+  return passend[0] ?? null;
+}
+
+function metContext(
+  gegevens: Werkset,
+  afspraken: Afspraak[],
+): AfspraakMetContext[] {
+  return afspraken.flatMap((afspraak) => {
+    const klant = gegevens.klanten.find((k) => k.id === afspraak.klantId);
+    const activiteitsoort = gegevens.activiteitsoorten.find(
+      (s) => s.id === afspraak.activiteitsoortId,
+    );
+    if (!klant || !activiteitsoort) return [];
+
+    return [
+      {
+        ...afspraak,
+        klant,
+        activiteitsoort,
+        contactpersoon:
+          gegevens.contactpersonen.find(
+            (p) => p.id === afspraak.contactpersoonId,
+          ) ?? null,
+      },
+    ];
+  });
+}
+
+function urenVanAfspraakMet(
+  instellingen: Instellingen,
+  afspraak: Afspraak,
+  telwijze: Telwijze,
+) {
+  const opLocatie = teltLocatieUren(afspraak.status, telwijze)
+    ? afspraak.urenOpLocatie
+    : 0;
+  const voorbereiding = teltVoorbereidingUren(
+    afspraak.status,
+    afspraak.voorbereidingGedaan,
+    telwijze,
+  )
+    ? afspraak.urenVoorbereiding
+    : 0;
+  const reistijd =
+    teltReistijd(afspraak.status, telwijze) && afspraak.reistijdEnkelMinuten
+      ? declarabeleReistijdUren(
+          afspraak.reistijdEnkelMinuten,
+          instellingen.eigenReistijdUrenPerDag,
+        )
+      : 0;
+
+  return {
+    opLocatie,
+    voorbereiding,
+    reistijd,
+    totaal: opLocatie + voorbereiding + reistijd,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Profielen en inrichting
+// ---------------------------------------------------------------------------
+
+/**
+ * Het profiel van de ingelogde gebruiker. De rol komt uit `profielen` en nooit
+ * uit een claim die de client kan zetten (SPEC.md 7).
+ */
+export async function huidigeMedewerker(): Promise<Profiel> {
+  return (await werkset()).ik;
+}
+
+export async function isBeheerder(): Promise<boolean> {
+  return (await werkset()).ik.rol === "beheerder";
+}
+
+export async function haalProfielen(): Promise<Profiel[]> {
+  return (await werkset()).profielen;
+}
+
+export async function haalInstellingen(): Promise<Instellingen> {
+  return (await werkset()).instellingen;
+}
+
+export async function haalActiviteitsoorten(): Promise<Activiteitsoort[]> {
+  return (await werkset()).activiteitsoorten
+    .filter((soort) => soort.actief)
+    .sort(
+      (a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"),
+    );
+}
+
+/** Ook de soorten die op non-actief staan; voor het beheerdersportaal. */
+export async function haalAlleActiviteitsoorten(): Promise<Activiteitsoort[]> {
+  return [...(await werkset()).activiteitsoorten].sort(
+    (a, b) => a.volgorde - b.volgorde || a.naam.localeCompare(b.naam, "nl"),
+  );
+}
+
+/**
+ * De soorten die de medewerker kan kiezen: alleen die met vaste uren. Soorten
+ * met `handmatigeUren` vragen om zelf ingevulde uren, en die velden ziet de
+ * medewerker niet meer.
+ */
+export async function haalTrainingsoorten(): Promise<Activiteitsoort[]> {
+  return (await haalActiviteitsoorten()).filter(
+    (soort) => !soort.handmatigeUren,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Klanten
+// ---------------------------------------------------------------------------
+
+export async function haalKlanten(): Promise<Klant[]> {
+  return (await werkset()).klanten
+    .filter((klant) => klant.actief)
+    .sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+}
+
+export async function haalKlant(klantId: string): Promise<Klant | null> {
+  return (await werkset()).klanten.find((klant) => klant.id === klantId) ?? null;
+}
+
+/** Zoekt op naam en plaats, vanaf twee tekens (SPEC.md 6.2). */
+export async function zoekKlanten(term: string): Promise<Klant[]> {
+  const gezocht = term.trim().toLowerCase();
+  if (gezocht.length < 2) return [];
+  return (await haalKlanten()).filter(
+    (klant) =>
+      klant.naam.toLowerCase().includes(gezocht) ||
+      klant.plaats.toLowerCase().includes(gezocht),
+  );
+}
+
+export async function haalContactpersonen(
+  klantId?: string,
+): Promise<Contactpersoon[]> {
+  const alle = (await werkset()).contactpersonen;
+  const gefilterd = klantId
+    ? alle.filter((persoon) => persoon.klantId === klantId)
+    : alle;
+  return [...gefilterd].sort((a, b) => {
+    if (a.isPrimair !== b.isPrimair) return a.isPrimair ? -1 : 1;
+    return a.naam.localeCompare(b.naam, "nl");
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Niet-inzetbare dagen
+// ---------------------------------------------------------------------------
+
+export async function haalNietInzetbareDagen(): Promise<NietInzetbareDag[]> {
+  return [...(await werkset()).nietInzetbareDagen].sort((a, b) =>
+    a.datum.localeCompare(b.datum),
+  );
+}
+
+export async function haalNietInzetbareDatums(): Promise<string[]> {
+  return (await werkset()).nietInzetbareDagen.map((dag) => dag.datum);
+}
+
+// ---------------------------------------------------------------------------
+// Afspraken
+// ---------------------------------------------------------------------------
+
+export async function haalAfspraken(medewerkerId: string): Promise<Afspraak[]> {
+  return afsprakenVan(await werkset(), medewerkerId);
+}
+
+export async function haalAfspraak(
+  afspraakId: string,
+): Promise<Afspraak | null> {
+  return (await werkset()).afspraken.find((a) => a.id === afspraakId) ?? null;
+}
+
+/** Afspraken met klant, contactpersoon en activiteitsoort erbij. */
+export async function haalAfsprakenMetContext(
+  medewerkerId: string,
+): Promise<AfspraakMetContext[]> {
+  const gegevens = await werkset();
+  return metContext(gegevens, afsprakenVan(gegevens, medewerkerId));
+}
+
+export async function haalAfsprakenVoorKlant(
+  klantId: string,
+): Promise<AfspraakMetContext[]> {
+  const gegevens = await werkset();
+  return metContext(gegevens, afsprakenVan(gegevens, gegevens.ik.id)).filter(
+    (afspraak) => afspraak.klantId === klantId,
+  );
+}
+
+/**
+ * De trainingen die met een school zijn afgesproken: alles wat nog loopt, met
+ * of zonder datum. Geannuleerde en verzette afspraken vallen eruit, voltooide
+ * ook — die staan onder "uitgevoerd".
+ */
+export async function haalAfgesprokenTrainingen(
+  klantId: string,
+): Promise<AfspraakMetContext[]> {
+  return (await haalAfsprakenVoorKlant(klantId))
+    .filter((afspraak) => afspraak.status === "gepland")
+    .sort(opDatum);
+}
+
+// ---------------------------------------------------------------------------
+// Uren
+// ---------------------------------------------------------------------------
+
+export async function haalHandmatigeUrenregels(
+  medewerkerId: string,
+): Promise<Urenregel[]> {
+  return handmatigeRegelsVan(await werkset(), medewerkerId);
+}
+
+/** Het contract dat op een datum geldt. */
+export async function haalContract(
+  medewerkerId: string,
+  datum: string,
+): Promise<Contract | null> {
+  return contractOp(await werkset(), medewerkerId, datum);
+}
+
 /** Alle uren van een medewerker in een periode, per telwijze. */
-export function urenInPeriode(
+export async function urenInPeriode(
   medewerkerId: string,
   vanaf: string,
   totEnMet: string,
   telwijze: Telwijze,
-): number {
-  const instellingen = haalInstellingen();
+): Promise<number> {
+  const gegevens = await werkset();
+  const { instellingen } = gegevens;
 
-  const afspraken = haalAfspraken(medewerkerId)
+  const afspraken = afsprakenVan(gegevens, medewerkerId)
     .map(naarAfspraakInvoer)
     .filter(
       (afspraak) =>
@@ -264,7 +355,7 @@ export function urenInPeriode(
         binnenPeriode(afspraak.voorbereidingDatum, vanaf, totEnMet),
     );
 
-  const urenregels = haalHandmatigeUrenregels(medewerkerId)
+  const urenregels = handmatigeRegelsVan(gegevens, medewerkerId)
     .filter((regel) => regel.datum >= vanaf && regel.datum <= totEnMet)
     .map(naarUrenregelInvoer);
 
@@ -287,17 +378,18 @@ export function urenInPeriode(
  * leiden uit de afspraken, en hier op het moment van tonen berekend. Dat
  * voorkomt dat opgeslagen uren en afspraken uit elkaar kunnen lopen.
  */
-export function urenregelsInPeriode(
+export async function urenregelsInPeriode(
   medewerkerId: string,
   vanaf: string,
   totEnMet: string,
   telwijze: Telwijze,
-): AfgeleideUrenregel[] {
-  const instellingen = haalInstellingen();
-  const { klanten } = opslag();
+): Promise<AfgeleideUrenregel[]> {
+  const gegevens = await werkset();
+  const { instellingen, klanten } = gegevens;
+  const afspraken = afsprakenVan(gegevens, medewerkerId);
   const regels: AfgeleideUrenregel[] = [];
 
-  for (const afspraak of haalAfspraken(medewerkerId)) {
+  for (const afspraak of afspraken) {
     const klant = klanten.find((k) => k.id === afspraak.klantId);
     const omschrijving = `${afspraak.titel}${klant ? ` — ${klant.naam}` : ""}`;
 
@@ -339,8 +431,11 @@ export function urenregelsInPeriode(
   }
 
   // Reistijd geldt per dag: de verste bestemming één keer, min de eigen tijd.
-  const reisPerDag = new Map<string, { minuten: number; bestemmingen: number }>();
-  for (const afspraak of haalAfspraken(medewerkerId)) {
+  const reisPerDag = new Map<
+    string,
+    { minuten: number; bestemmingen: number }
+  >();
+  for (const afspraak of afspraken) {
     if (!binnenPeriode(afspraak.datum, vanaf, totEnMet)) continue;
     if (!teltReistijd(afspraak.status, telwijze)) continue;
     const minuten = afspraak.reistijdEnkelMinuten ?? 0;
@@ -375,7 +470,7 @@ export function urenregelsInPeriode(
     });
   }
 
-  for (const regel of haalHandmatigeUrenregels(medewerkerId)) {
+  for (const regel of handmatigeRegelsVan(gegevens, medewerkerId)) {
     if (regel.datum < vanaf || regel.datum > totEnMet) continue;
     regels.push({
       id: regel.id,
@@ -389,141 +484,100 @@ export function urenregelsInPeriode(
   }
 
   return regels.sort(
-    (a, b) => a.datum.localeCompare(b.datum) || a.categorie.localeCompare(b.categorie),
+    (a, b) =>
+      a.datum.localeCompare(b.datum) || a.categorie.localeCompare(b.categorie),
   );
 }
 
 /**
- * Uitsplitsing per categorie over een periode (SPEC.md 6.6).
- * Locatie-, voorbereidings- en reistijduren komen uit de afspraken; de overige
+ * Uitsplitsing per categorie over een periode (SPEC.md 6.6). Locatie-,
+ * voorbereidings- en reistijduren komen uit de afspraken; de overige
  * categorieën uit de handmatige urenregels.
  */
-export function urenPerCategorie(
+export async function urenPerCategorie(
   medewerkerId: string,
   vanaf: string,
   totEnMet: string,
   telwijze: Telwijze,
-): Array<{ categorie: UrenCategorie; uren: number }> {
-  const instellingen = haalInstellingen();
-  const afspraken = haalAfspraken(medewerkerId);
+): Promise<Array<{ categorie: UrenCategorie; uren: number }>> {
+  const regels = await urenregelsInPeriode(
+    medewerkerId,
+    vanaf,
+    totEnMet,
+    telwijze,
+  );
   const totalen = new Map<UrenCategorie, number>();
 
-  function tel(categorie: UrenCategorie, uren: number) {
-    if (uren <= 0) return;
-    totalen.set(categorie, (totalen.get(categorie) ?? 0) + uren);
-  }
-
-  for (const afspraak of afspraken) {
-    if (
-      binnenPeriode(afspraak.datum, vanaf, totEnMet) &&
-      teltLocatieUren(afspraak.status, telwijze)
-    ) {
-      tel("op_locatie", afspraak.urenOpLocatie);
-    }
-    if (
-      binnenPeriode(afspraak.voorbereidingDatum, vanaf, totEnMet) &&
-      teltVoorbereidingUren(
-        afspraak.status,
-        afspraak.voorbereidingGedaan,
-        telwijze,
-      )
-    ) {
-      tel("voorbereiding", afspraak.urenVoorbereiding);
-    }
-  }
-
-  // Reistijd wordt per dag bepaald: één keer de verste bestemming, één keer de
-  // eigen tijd eraf.
-  const reisPerDag = new Map<string, number>();
-  for (const afspraak of afspraken) {
-    if (!binnenPeriode(afspraak.datum, vanaf, totEnMet)) continue;
-    if (!teltReistijd(afspraak.status, telwijze)) continue;
-    const datum = afspraak.datum!;
-    const minuten = afspraak.reistijdEnkelMinuten ?? 0;
-    reisPerDag.set(datum, Math.max(reisPerDag.get(datum) ?? 0, minuten));
-  }
-  for (const minuten of reisPerDag.values()) {
-    if (minuten > 0) {
-      tel(
-        "reistijd",
-        declarabeleReistijdUren(minuten, instellingen.eigenReistijdUrenPerDag),
-      );
-    }
-  }
-
-  for (const regel of haalHandmatigeUrenregels(medewerkerId)) {
-    if (regel.datum < vanaf || regel.datum > totEnMet) continue;
-    tel(regel.categorie, regel.uren);
+  for (const regel of regels) {
+    if (regel.uren <= 0) continue;
+    totalen.set(
+      regel.categorie,
+      (totalen.get(regel.categorie) ?? 0) + regel.uren,
+    );
   }
 
   return [...totalen.entries()]
-    .map(([categorie, uren]) => ({ categorie, uren: Math.round(uren * 100) / 100 }))
+    .map(([categorie, uren]) => ({
+      categorie,
+      uren: Math.round(uren * 100) / 100,
+    }))
     .sort((a, b) => b.uren - a.uren);
 }
 
 /** De jaarnormbalans van een medewerker (SPEC.md 5.4). */
-export function jaarnormBalans(
+export async function jaarnormBalans(
   medewerkerId: string,
   jaar: number,
   peildatum: string,
-): JaarnormUitkomst | null {
-  const profiel = opslag().profielen.find((p) => p.id === medewerkerId);
-  const contract = haalContract(medewerkerId, peildatum);
+): Promise<JaarnormUitkomst | null> {
+  const gegevens = await werkset();
+  const profiel = gegevens.profielen.find((p) => p.id === medewerkerId);
+  const contract = contractOp(gegevens, medewerkerId, peildatum);
   if (!profiel || !contract) return null;
 
   const jaarStart = `${jaar}-01-01`;
   const jaarEind = `${jaar}-12-31`;
 
+  const [gerealiseerdeUren, geplandeUren] = await Promise.all([
+    urenInPeriode(medewerkerId, jaarStart, jaarEind, "gerealiseerd"),
+    urenInPeriode(medewerkerId, jaarStart, jaarEind, "gepland"),
+  ]);
+
   return berekenJaarnorm({
     jaar,
     urenPerWeek: contract.urenPerWeek,
     normFulltime: contract.normFulltime,
-    nietInzetbareDatums: haalNietInzetbareDatums(),
+    nietInzetbareDatums: gegevens.nietInzetbareDagen.map((dag) => dag.datum),
     inDienstVanaf: profiel.inDienstVanaf,
     uitDienstPer: profiel.uitDienstPer,
     peildatum,
-    gerealiseerdeUren: urenInPeriode(
-      medewerkerId,
-      jaarStart,
-      jaarEind,
-      "gerealiseerd",
-    ),
-    geplandeUren: urenInPeriode(medewerkerId, jaarStart, jaarEind, "gepland"),
+    gerealiseerdeUren,
+    geplandeUren,
   });
 }
 
 /**
- * De uren van één afspraak, zoals ze in het overzicht worden getoond: locatie,
- * voorbereiding en het aandeel reistijd van die dag.
+ * De uren van één afspraak, zoals ze in het overzicht worden getoond.
+ *
+ * De reistijd is die van deze afspraak op zichzelf. Staan er meerdere
+ * afspraken op één dag, dan geldt de reistijd van de verste bestemming één
+ * keer per dag — kijk voor het dagtotaal bij `urenInPeriode`.
  */
-export function urenVanAfspraak(
+export async function urenVanAfspraak(
   afspraak: Afspraak,
   telwijze: Telwijze = "gepland",
-): { opLocatie: number; voorbereiding: number; reistijd: number; totaal: number } {
-  const instellingen = haalInstellingen();
+) {
+  return urenVanAfspraakMet(await haalInstellingen(), afspraak, telwijze);
+}
 
-  const opLocatie = teltLocatieUren(afspraak.status, telwijze)
-    ? afspraak.urenOpLocatie
-    : 0;
-  const voorbereiding = teltVoorbereidingUren(
-    afspraak.status,
-    afspraak.voorbereidingGedaan,
-    telwijze,
-  )
-    ? afspraak.urenVoorbereiding
-    : 0;
-  const reistijd =
-    teltReistijd(afspraak.status, telwijze) && afspraak.reistijdEnkelMinuten
-      ? declarabeleReistijdUren(
-          afspraak.reistijdEnkelMinuten,
-          instellingen.eigenReistijdUrenPerDag,
-        )
-      : 0;
-
-  return {
-    opLocatie,
-    voorbereiding,
-    reistijd,
-    totaal: opLocatie + voorbereiding + reistijd,
-  };
+/**
+ * Dezelfde berekening, maar zonder te wachten. Voor lijsten die per rij de
+ * uren tonen: haal de instellingen dan één keer op en geef ze hier mee.
+ */
+export function urenVanAfspraakSync(
+  instellingen: Instellingen,
+  afspraak: Afspraak,
+  telwijze: Telwijze = "gepland",
+) {
+  return urenVanAfspraakMet(instellingen, afspraak, telwijze);
 }

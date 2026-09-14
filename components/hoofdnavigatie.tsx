@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { Uitlogknop } from "@/components/uitlogknop";
 import { cn } from "@/lib/utils";
 import type { Profiel } from "@/lib/data/types";
 
@@ -83,6 +84,7 @@ export function Hoofdnavigatie({
           <span className="rounded-md border px-2 py-0.5 text-xs capitalize">
             {medewerker.rol}
           </span>
+          <Uitlogknop />
         </div>
       </div>
     </header>

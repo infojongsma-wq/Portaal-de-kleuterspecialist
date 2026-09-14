@@ -5,19 +5,13 @@ en wie wat doet.
 
 ---
 
-## Waar het nu op vastloopt
+## Waar het om draait
 
-Er zit nog **geen database** achter. Alles wat je invult staat in het geheugen
-van de server. Op je eigen laptop werkt dat; op Vercel draait je portaal op
-meerdere servers tegelijk, en die delen dat geheugen niet. Vandaar dat een
-school die je toevoegt even later weer weg is.
+Het portaal bewaart zijn gegevens in Supabase en zit achter een inlog. Die twee
+komen uit hetzelfde onderdeel, dus één keer inrichten regelt allebei.
 
-Dat is geen bug meer maar een ontbrekend onderdeel, en het is **hetzelfde
-onderdeel dat de inlog mogelijk maakt**. Supabase levert allebei: de database
-én het inloggen. Eén keer inrichten lost dus twee dingen tegelijk op.
-
-De inrichting kan ik niet voor je doen — daar is jouw account voor nodig.
-Reken op ongeveer twintig minuten.
+De inrichting kan ik niet voor je doen — daar is jouw account voor nodig. Reken
+op ongeveer twintig minuten voor stap 1 tot en met 4.
 
 ---
 
@@ -123,24 +117,49 @@ zichzelf nergens toegang toe; de beveiligingsregels in de database doen dat werk
 
 ---
 
-## Stap 4 — De koppeling en het inlogscherm (ik)
+## Stap 4 — Je eerste inlogaccount (jij, ±3 minuten)
 
-Zodra stap 1 tot en met 3 klaar zijn, bouw ik:
+De koppeling met Supabase en het inlogscherm zijn gebouwd. Wat nog ontbreekt is
+een account om mee in te loggen.
 
-- de koppeling met Supabase, in plaats van het huidige servergeheugen;
-- een inlogscherm met e-mailadres en wachtwoord;
-- automatisch doorsturen naar de inlogpagina als je niet bent ingelogd;
-- tweestapsverificatie voor de beheerder;
-- het aanmaken en uitnodigen van medewerkers in het beheerdersportaal.
+**Doe dit in deze volgorde**, anders krijgt je account geen profiel:
 
-De beveiligingsregels in de database (Row Level Security) staan al klaar en
-zijn bij stap 2 mee geïnstalleerd. Die zorgen ervoor dat een medewerker alleen
-bij de eigen afspraken en uren kan, ook als iemand de app zelf zou proberen te
-omzeilen.
+1. **Eerst de laatste migratie draaien.** Open in de SQL Editor het bestand
+   `supabase/migrations/20260914120000_profiel_bij_inlog.sql`, plak het en klik
+   **Run**. Dit zorgt dat er automatisch een profiel bij een nieuw account
+   wordt aangemaakt. Zonder dat log je in en zie je een foutmelding.
+2. **Daarna het account aanmaken.** Ga in Supabase naar **Authentication** →
+   **Users** → **Add user** → **Create new user**. Vul je e-mailadres en een
+   wachtwoord van minstens twaalf tekens in, en zet **Auto Confirm User** aan.
 
-**Wat ik van je nodig heb:** de Project URL en de publieke sleutel. Die mag je
-gewoon hier in de chat zetten. De geheime sleutel niet — die zet je alleen
-in Vercel en houd je verder voor jezelf.
+De eerste die op deze manier wordt aangemaakt krijgt automatisch de rol
+**beheerder**; iedereen daarna wordt medewerker.
+
+Ga daarna naar je portaal. Je komt op het inlogscherm en kunt naar binnen.
+
+**Ben je te vroeg geweest** en bestaat het account al zonder profiel? Draai dan
+alsnog de migratie en voer dit uit in de SQL Editor:
+
+```sql
+insert into public.profielen (auth_gebruiker_id, voornaam, achternaam, email, rol)
+select id, split_part(email, '@', 1), '', email, 'beheerder'
+from auth.users
+where id not in (select auth_gebruiker_id from public.profielen where auth_gebruiker_id is not null);
+```
+
+### Wat er nog niet is
+
+- **Tweestapsverificatie** voor de beheerder (SPEC.md hoofdstuk 7).
+- **Medewerkers uitnodigen per e-mail** vanuit het beheerdersportaal. Een
+  tweede medewerker maak je voorlopig aan via Authentication → Users, net als
+  hierboven.
+
+### Wat wél werkt
+
+Row Level Security doet het beveiligingswerk in de database zelf: een
+medewerker kan alleen bij de eigen afspraken en uren, ook als iemand de app zou
+proberen te omzeilen. De rol komt uit `profielen` en nooit uit iets dat de
+browser kan zetten.
 
 ---
 
@@ -148,10 +167,10 @@ in Vercel en houd je verder voor jezelf.
 
 Voordat je echte uren gaat bijhouden:
 
-- **Contracturen per week.** Staat nu op 24. Pas dit aan bij Beheer; de
-  jaarnorm rolt er vanzelf uit.
+- **Contracturen per week.** Leg dit vast bij Beheer; de jaarnorm rolt er
+  vanzelf uit. Zonder contract kan het portaal geen norm berekenen.
 - **Datum indiensttreding.** Bepaalt de berekening naar rato in het eerste
-  jaar.
+  jaar. Staat in `profielen`, veld `in_dienst_vanaf`.
 - **Schoolvakanties.** De vakantiedagen die er nu in staan zijn bij benadering
   ingevuld en zijn **geen officiële data**. Vervang ze per schooljaar door de
   echte data van regio Noord. Zolang dat niet klopt, klopt de jaarnorm ook niet
@@ -196,10 +215,13 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 
 | Onderwerp | Staat |
 |---|---|
-| Inloggen en tweestapsverificatie | wacht op stap 1 t/m 3 |
-| Gegevens bewaren in een database | wacht op stap 1 t/m 3 |
-| Medewerkers uitnodigen per e-mail | wacht op inloggen |
+| Inloggen met e-mail en wachtwoord | gebouwd |
+| Gegevens bewaren in de database | gebouwd |
+| Contracturen vastleggen in Beheer | gebouwd |
+| Tweestapsverificatie voor de beheerder | nog te bouwen |
+| Medewerkers uitnodigen per e-mail | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | nog te lezen, niet te wijzigen |
-| Autorisatietest uit `SPEC.md` 9.7 | kan pas tegen een echte database |
+| Wijzigingslog bekijken | triggers vullen hem al, scherm ontbreekt |
+| Autorisatietest uit `SPEC.md` 9.7 | kan nu wel, staat nog open |
 | Nachtelijke back-up naar HiDrive | nog in te richten |

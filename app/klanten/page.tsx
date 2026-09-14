@@ -36,7 +36,7 @@ export default async function KlantenPagina({
   const zoekterm = tekst(parameters.zoek).trim();
   const gekozenId = tekst(parameters.klant);
 
-  const alleKlanten = haalKlanten();
+  const alleKlanten = await haalKlanten();
   const gevonden =
     zoekterm.length >= 2
       ? alleKlanten.filter(
@@ -49,8 +49,13 @@ export default async function KlantenPagina({
   const gekozen =
     alleKlanten.find((klant) => klant.id === gekozenId) ?? gevonden[0] ?? null;
 
-  const afspraken = gekozen ? haalAfsprakenVoorKlant(gekozen.id) : [];
-  const afgesproken = gekozen ? haalAfgesprokenTrainingen(gekozen.id) : [];
+  const [afspraken, afgesproken, contactpersonen, trainingsoorten] =
+    await Promise.all([
+      gekozen ? haalAfsprakenVoorKlant(gekozen.id) : [],
+      gekozen ? haalAfgesprokenTrainingen(gekozen.id) : [],
+      gekozen ? haalContactpersonen(gekozen.id) : [],
+      haalTrainingsoorten(),
+    ]);
   const uitgevoerd = afspraken
     .filter((a) => a.status === "voltooid")
     .sort((a, b) => (b.datum ?? "").localeCompare(a.datum ?? ""));
@@ -157,12 +162,12 @@ export default async function KlantenPagina({
                 <CardTitle>Contactpersonen</CardTitle>
               </CardHeader>
               <CardContent className="grid gap-3">
-                {haalContactpersonen(gekozen.id).length === 0 ? (
+                {contactpersonen.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Nog geen contactpersonen vastgelegd.
                   </p>
                 ) : (
-                  haalContactpersonen(gekozen.id).map((persoon) => (
+                  contactpersonen.map((persoon) => (
                     <div
                       key={persoon.id}
                       className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
@@ -201,7 +206,7 @@ export default async function KlantenPagina({
                   klantId={gekozen.id}
                   klantNaam={gekozen.naam}
                   trainingen={afgesproken}
-                  trainingsoorten={haalTrainingsoorten()}
+                  trainingsoorten={trainingsoorten}
                 />
               </CardContent>
             </Card>
