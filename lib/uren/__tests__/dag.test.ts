@@ -55,7 +55,7 @@ describe("uren per dag (SPEC.md 5.3)", () => {
       datum: "2027-03-10",
       voorbereidingDatum: "2027-03-09",
       urenOpLocatie: 3.5,
-      urenVoorbereiding: 0.5,
+      urenVoorbereiding: 1.0,
       reistijdEnkelMinuten: 15,
     });
     const basis = {
@@ -71,9 +71,9 @@ describe("uren per dag (SPEC.md 5.3)", () => {
     expect(dagVanObservatie.totaalUren).toBe(3.5);
 
     const dagErvoor = berekenDag({ ...basis, datum: "2027-03-09" });
-    expect(dagErvoor.urenVoorbereiding).toBe(0.5);
+    expect(dagErvoor.urenVoorbereiding).toBe(1.0);
     expect(dagErvoor.urenOpLocatie).toBe(0.0);
-    expect(dagErvoor.totaalUren).toBe(0.5);
+    expect(dagErvoor.totaalUren).toBe(1.0);
   });
 });
 
@@ -175,12 +175,12 @@ describe("meerdere dagen optellen", () => {
           datum: "2027-03-10",
           voorbereidingDatum: "2027-03-09",
           urenOpLocatie: 3.5,
-          urenVoorbereiding: 0.5,
+          urenVoorbereiding: 1.0,
           reistijdEnkelMinuten: 15,
         }),
       ],
       handmatigeUrenregels: [
-        { datum: "2027-03-11", categorie: "administratie", uren: 1.0 },
+        { datum: "2027-03-11", categorie: "overleg", uren: 1.0 },
       ],
       ...INSTELLINGEN,
     });
@@ -190,7 +190,8 @@ describe("meerdere dagen optellen", () => {
       "2027-03-10",
       "2027-03-11",
     ]);
-    expect(totaalUren(dagen)).toBe(5.0);
+    // 3,50 op locatie + 1,00 voorbereiding + 1,00 handmatig.
+    expect(totaalUren(dagen)).toBe(5.5);
   });
 });
 

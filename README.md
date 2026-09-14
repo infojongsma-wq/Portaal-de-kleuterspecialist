@@ -68,12 +68,6 @@ npx supabase db push         # migraties toepassen op de dev-database
 - **shadcn/ui als broncode** in `components/ui/`, omdat de registry op
   ui.shadcn.com vanuit de bouwomgeving niet bereikbaar is.
 
-## Afwijking van SPEC.md
-
-De voorbereidingstijd van een observatie staat op **1,00 uur**; `SPEC.md`
-hoofdstuk 2 en 5.1 noemen nog 0,50. De waarde staat in de database
-(`activiteitsoorten`), niet in de code.
-
 ## Status
 
 Werkend, maar nog zonder database en zonder inlog. Zie `PUBLICEREN.md` voor de

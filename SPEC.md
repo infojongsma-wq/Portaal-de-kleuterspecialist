@@ -40,7 +40,7 @@ Deze waarden zijn besloten en mogen niet worden gewijzigd zonder overleg.
 | Vakantieregio | Noord |
 | Eigen reistijd per dag | 2,0 uur (instelbaar) |
 | Training | 3,0 uur op locatie + 3,0 uur voorbereiding = 6,0 uur |
-| Observatie | 3,5 uur op locatie + 0,5 uur voorbereiding = 4,0 uur |
+| Observatie | 3,5 uur op locatie + 1,0 uur voorbereiding = 4,5 uur |
 | Doelapparaat | Laptop, minimaal 1280px breed |
 | Taal interface | Nederlands |
 
@@ -179,7 +179,7 @@ Startgegevens:
 | naam | uren_op_locatie | uren_voorbereiding | handmatige_uren |
 |---|---|---|---|
 | Training | 3,00 | 3,00 | false |
-| Observatie | 3,50 | 0,50 | false |
+| Observatie | 3,50 | 1,00 | false |
 | Anders | 0,00 | 0,00 | true |
 
 ### 4.6 `afspraken`
@@ -306,7 +306,7 @@ basisuren = uren_op_locatie + uren_voorbereiding
 | Activiteitsoort | Op locatie | Voorbereiding | Totaal |
 |---|---|---|---|
 | Training | 3,0 | 3,0 | **6,0** |
-| Observatie | 3,5 | 0,5 | **4,0** |
+| Observatie | 3,5 | 1,0 | **4,5** |
 | Anders | handmatig | handmatig | handmatig |
 
 De voorbereidingsuren worden geboekt op `voorbereiding_datum`, de locatie-uren op `datum`. Standaard zijn die gelijk, maar ze mogen verschillen.
@@ -368,7 +368,7 @@ totaal              7,67 uur
 **Voorbeeld — observatie in Hengelo (enkele reis 15 min), voorbereiding dag ervoor:**
 ```
 Dag van de observatie:  3,50 op locatie + 0,00 reistijd = 3,50 uur
-Dag ervoor:             0,50 voorbereiding              = 0,50 uur
+Dag ervoor:             1,00 voorbereiding              = 1,00 uur
 ```
 
 ### 5.4 Jaarurennorm-balans
