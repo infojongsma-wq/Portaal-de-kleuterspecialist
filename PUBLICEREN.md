@@ -267,8 +267,10 @@ Voordat je echte uren gaat bijhouden:
   — het portaal waarschuwt daar zelf over.
 - **Soorten trainingen.** Vul bij Beheer je eigen trainingen aan, met de juiste
   uren per soort.
-- **Logo.** In `public/logo.svg` staat een nagetekende versie. Vervang dat
-  bestand door je eigen logo, dan staat het overal meteen goed.
+- **Logo.** Staat erin: `public/logo.svg` is het echte appel-puzzellogo, omgezet
+  uit `appel-logo.eps` naar vectorpaden. Wil je het ooit vervangen, dan is dat
+  hetzelfde bestand overschrijven; het logo staat op het inlogscherm, in de kop
+  van elke pagina en op de afdrukken.
 
 ---
 
