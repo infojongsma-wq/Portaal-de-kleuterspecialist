@@ -74,24 +74,42 @@ volledige bestand, óf de losse migraties — niet allebei.
 
 ## Stap 3 — De sleutels aan Vercel geven (jij, ±5 minuten)
 
-1. In Supabase: **Project Settings** → **API Keys**. Daar staan drie dingen:
-   - **Project URL**
-   - **anon public** sleutel
-   - **service_role** sleutel
-2. In Vercel: open je project → **Settings** → **Environment Variables**. Voeg
-   toe:
+In Supabase staan de URL en de sleutels op **twee verschillende pagina's**.
+Klik linksonder op **Project Settings** (het tandwiel).
+
+1. **Project URL** — te vinden onder **Data API**. Ziet eruit als
+   `https://abcdefghijklm.supabase.co`.
+
+   Kun je hem niet vinden, lees hem dan af uit de adresbalk. Die ziet eruit als
+   `supabase.com/dashboard/project/abcdefghijklm`; het stuk na `/project/` is je
+   projectcode, en de Project URL is die code met `https://` ervoor en
+   `.supabase.co` erachter.
+
+2. **De sleutels** — te vinden onder **API Keys**. Supabase is ze aan het
+   hernoemen, dus je ziet één van deze twee:
+
+   | Waarvoor | Oude naam | Nieuwe naam |
+   |---|---|---|
+   | publiek | `anon` `public` | **Publishable key** (`sb_publishable_…`) |
+   | geheim | `service_role` | **Secret key** (`sb_secret_…`) |
+
+   De geheime zit verborgen achter een oogje of een knop **Reveal**.
+
+3. In Vercel: open je project → **Settings** → **Environment Variables**. Voeg
+   toe, en vink bij elk alle drie de omgevingen aan (Production, Preview,
+   Development):
 
    | Naam | Waarde |
    |---|---|
    | `NEXT_PUBLIC_SUPABASE_URL` | de Project URL |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | de anon public sleutel |
-   | `SUPABASE_SERVICE_ROLE_KEY` | de service_role sleutel |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | de publieke sleutel |
+   | `SUPABASE_SERVICE_ROLE_KEY` | de geheime sleutel |
 
-**Over de service_role-sleutel.** Die geeft volledige toegang tot alle gegevens
-en omzeilt alle beveiligingsregels. Zet hem **alleen** in Vercel, plak hem
-nooit in een chat, een e-mail of een bestand in de repository. De anon-sleutel
-is wel veilig om te delen — die is bedoeld om in de browser te staan en geeft
-op zichzelf nergens toegang toe.
+**Over de geheime sleutel.** Die geeft volledige toegang tot alle gegevens en
+omzeilt alle beveiligingsregels. Zet hem **alleen** in Vercel, plak hem nooit in
+een chat, een e-mail of een bestand in de repository. De publieke sleutel is wel
+veilig om te delen — die is bedoeld om in de browser te staan en geeft op
+zichzelf nergens toegang toe; de beveiligingsregels in de database doen dat werk.
 
 ---
 
@@ -110,8 +128,8 @@ zijn bij stap 2 mee geïnstalleerd. Die zorgen ervoor dat een medewerker alleen
 bij de eigen afspraken en uren kan, ook als iemand de app zelf zou proberen te
 omzeilen.
 
-**Wat ik van je nodig heb:** de Project URL en de anon-sleutel. Die mag je
-gewoon hier in de chat zetten. De service_role-sleutel niet — die zet je alleen
+**Wat ik van je nodig heb:** de Project URL en de publieke sleutel. Die mag je
+gewoon hier in de chat zetten. De geheime sleutel niet — die zet je alleen
 in Vercel en houd je verder voor jezelf.
 
 ---
