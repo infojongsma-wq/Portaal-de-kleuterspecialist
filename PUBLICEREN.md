@@ -140,14 +140,21 @@ staan.
 
 Zo zet je dat goed:
 
-1. Open je project in Vercel → **Settings** → **Git**.
-2. Bij **Production Branch** staat `main`. Zet die op
-   `claude/kleuterspecialist-portaal-prototype-9roj7p` en klik **Save**.
+1. Open je project in Vercel → **Settings**. Waar de instelling staat, hangt af
+   van hoe oud je scherm is:
+   - nieuwere schermen: **Environments** → **Production** → **Branch Tracking**
+   - oudere schermen: **Git** → **Production Branch**
+2. Er staat `main`. Zet die op
+   `claude/kleuterspecialist-portaal-prototype-9roj7p` en sla op.
 3. Vanaf dan wordt elke wijziging die wordt doorgestuurd, vanzelf op het echte
    adres gezet. Een wijziging die er al vóór deze instelling was, komt er niet
    met terugwerkende kracht op: die publiceer je één keer handmatig via
    **Deployments** → de bovenste regel → het knopje **⋯** → **Promote to
    Production**.
+
+Kun je de instelling niet vinden, dan is die laatste weg — **Promote to
+Production** — op zichzelf ook genoeg. Alleen moet je hem dan na elke wijziging
+opnieuw gebruiken.
 
 **Zie je nog steeds de oude versie?** Kijk dan in **Deployments** naar de
 bovenste regel. Staat daar het label `Production` bij, en klopt de omschrijving
