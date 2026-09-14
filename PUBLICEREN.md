@@ -99,11 +99,21 @@ Klik linksonder op **Project Settings** (het tandwiel).
    toe, en vink bij elk alle drie de omgevingen aan (Production, Preview,
    Development):
 
-   | Naam | Waarde |
-   |---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | de Project URL |
-   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | de publieke sleutel |
-   | `SUPABASE_SERVICE_ROLE_KEY` | de geheime sleutel |
+   | Naam | Waarde | Soort |
+   |---|---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | de Project URL | Config |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | de publieke sleutel | Config |
+   | `SUPABASE_SERVICE_ROLE_KEY` | de geheime sleutel | **Secret** |
+
+   Vercel vraagt per variabele om een soort. `Secret` (soms `Sensitive`)
+   betekent dat de waarde na opslaan is versleuteld en door niemand meer is
+   terug te lezen, ook niet door jou. Dat hoort bij de geheime sleutel. De
+   eerste twee worden in de website meegebakken en zijn dus sowieso openbaar;
+   die als `Secret` markeren geeft alleen een vals gevoel van veiligheid en
+   maakt ze lastiger te controleren.
+
+   Raak je de geheime sleutel kwijt, dan is dat geen ramp: in Supabase maak je
+   er een nieuwe aan.
 
 **Over de geheime sleutel.** Die geeft volledige toegang tot alle gegevens en
 omzeilt alle beveiligingsregels. Zet hem **alleen** in Vercel, plak hem nooit in
