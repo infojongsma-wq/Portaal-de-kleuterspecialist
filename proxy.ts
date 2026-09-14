@@ -16,7 +16,15 @@ import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
  * mag zien en wijzigen bepaalt Row Level Security in de database.
  */
 
-const OPENBARE_PADEN = ["/inloggen", "/wachtwoord-vergeten", "/instellen"];
+// `/diagnose` staat er bewust bij: juist als de sessie of de database stuk is
+// moet dat scherm te bereiken zijn. Het toont zonder inlog niets over de
+// database, alleen of Supabase is ingesteld.
+const OPENBARE_PADEN = [
+  "/inloggen",
+  "/wachtwoord-vergeten",
+  "/instellen",
+  "/diagnose",
+];
 
 export async function proxy(verzoek: NextRequest) {
   const omgeving = leesSupabaseOmgeving();

@@ -44,19 +44,31 @@ export default function Foutpagina({
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Lukt het na opnieuw proberen nog steeds niet, geef dan de melding
-              hierboven door.
+              Deze melding zegt weinig: in een gepubliceerde versie laat Next.js
+              de eigenlijke tekst weg. Klik op <strong>Wat is er mis?</strong> —
+              dat scherm doet dezelfde controles en zegt wél waar het op vastloopt.
             </p>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={reset}>
               Opnieuw proberen
+            </Button>
+            <Button type="button" variant="outline" asChild>
+              <a href="/diagnose">Wat is er mis?</a>
             </Button>
             <Button type="button" variant="outline" asChild>
               <a href="/inloggen">Naar inloggen</a>
             </Button>
           </div>
+
+          {error.digest ? (
+            // Het kenmerk waarmee de melding terug te vinden is in de logboeken
+            // van Vercel. Zonder dit is zoeken tussen alle aanvragen.
+            <p className="text-xs text-muted-foreground">
+              Kenmerk voor in het logboek: <code>{error.digest}</code>
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </main>
