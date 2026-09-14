@@ -32,6 +32,12 @@ export interface Profiel {
   inDienstVanaf: string | null;
   uitDienstPer: string | null;
   actief: boolean;
+  /**
+   * Of er een inlogaccount aan dit profiel hangt. Een profiel zonder account
+   * bestaat wel in het portaal maar kan nog niet inloggen; dat gebeurt zodra de
+   * beheerder een uitnodiging stuurt en die wordt aangenomen.
+   */
+  heeftAccount: boolean;
 }
 
 export interface Contract {

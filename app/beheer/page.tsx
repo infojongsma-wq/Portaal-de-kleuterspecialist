@@ -2,24 +2,18 @@ import { AlertTriangle, Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
 import { ContractFormulier } from "@/components/beheer/contract-formulier";
+import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import {
   haalAlleActiviteitsoorten,
   haalContract,
   haalInstellingen,
   haalNietInzetbareDagen,
   haalProfielen,
+  huidigeMedewerker,
   isBeheerder,
   jaarnormBalans,
   urenPerCategorie,
@@ -55,8 +49,9 @@ export default async function BeheerPagina() {
     );
   }
 
-  const [instellingen, profielen, nietInzetbareDagen, soorten] =
+  const [ik, instellingen, profielen, nietInzetbareDagen, soorten] =
     await Promise.all([
+      huidigeMedewerker(),
       haalInstellingen(),
       haalProfielen(),
       haalNietInzetbareDagen(),
@@ -86,6 +81,12 @@ export default async function BeheerPagina() {
       contract: await haalContract(profiel.id, vandaag),
     })),
   );
+
+  // De fulltimenorm hoort uit de database te komen, niet uit de code. Is er nog
+  // geen enkel contract, dan valt er ook geen jaarnorm te tonen.
+  const normUitContracten =
+    contractenVanIedereen.find((regel) => regel.contract)?.contract
+      ?.normFulltime ?? null;
 
   const perJaar = new Map<number, number>();
   for (const dag of nietInzetbareDagen) {
@@ -126,6 +127,7 @@ export default async function BeheerPagina() {
                   urenPerWeek={contract?.urenPerWeek ?? null}
                   ingangsdatum={contract?.ingangsdatum ?? null}
                   vandaag={vandaag}
+                  normFulltime={contract?.normFulltime ?? normUitContracten}
                 />
 
                 {balans ? (
@@ -242,43 +244,18 @@ export default async function BeheerPagina() {
         <Card className="p-0">
           <CardHeader>
             <CardTitle>Medewerkers</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Naam, rol, dienstverband, standplaats en contract. De datums van
+              in- en uitdiensttreding bepalen over welk deel van het jaar de
+              norm wordt gerekend.
+            </p>
           </CardHeader>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Naam</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Rol</TableHead>
-                <TableHead>In dienst vanaf</TableHead>
-                <TableHead className="text-right">Uren per week</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contractenVanIedereen.map(({ profiel, contract }) => (
-                <TableRow key={profiel.id}>
-                  <TableCell className="font-medium">
-                    {profiel.voornaam} {profiel.achternaam}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {profiel.email}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="capitalize">
-                      {profiel.rol}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="tabular-nums">
-                    {profiel.inDienstVanaf
-                      ? formatteerDatum(profiel.inDienstVanaf)
-                      : "—"}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {contract ? formatteerUren(contract.urenPerWeek) : "—"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <MedewerkersBeheer
+            medewerkers={contractenVanIedereen}
+            ikId={ik.id}
+            vandaag={vandaag}
+            normFulltime={normUitContracten}
+          />
         </Card>
 
         <div className="grid gap-5 lg:grid-cols-2">

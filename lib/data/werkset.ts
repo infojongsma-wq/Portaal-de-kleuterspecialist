@@ -75,6 +75,7 @@ function naarProfiel(rij: Rij): Profiel {
     inDienstVanaf: (rij.in_dienst_vanaf as string) ?? null,
     uitDienstPer: (rij.uit_dienst_per as string) ?? null,
     actief: Boolean(rij.actief),
+    heeftAccount: rij.auth_gebruiker_id != null,
   };
 }
 

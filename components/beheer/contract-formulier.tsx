@@ -24,11 +24,18 @@ export function ContractFormulier({
   urenPerWeek,
   ingangsdatum,
   vandaag,
+  normFulltime,
 }: {
   profielId: string;
   urenPerWeek: number | null;
   ingangsdatum: string | null;
   vandaag: string;
+  /**
+   * De fulltimenorm uit `contracten.norm_fulltime`. Staat hier bewust niet als
+   * getal in de code (CLAUDE.md, "Rekenregels — nooit hardcoderen). Is er nog
+   * geen contract, dan is dit `null` en tonen we geen jaarnorm.
+   */
+  normFulltime: number | null;
 }) {
   const router = useRouter();
   const [uren, setUren] = React.useState(String(urenPerWeek ?? 24));
@@ -83,10 +90,13 @@ export function ContractFormulier({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Werktijdfactor {formatteerUren(werktijdfactor)} · jaarnorm{" "}
-        {formatteerUren(1659 * werktijdfactor)} uur. Verandert het aantal uren
-        per week, zet dan een nieuwe ingangsdatum — het lopende contract wordt
-        dan afgesloten en eerdere jaren blijven kloppen.
+        Werktijdfactor {formatteerUren(werktijdfactor)}
+        {normFulltime != null
+          ? ` · jaarnorm ${formatteerUren(normFulltime * werktijdfactor)} uur`
+          : " · de jaarnorm volgt zodra het contract is vastgelegd"}
+        . Verandert het aantal uren per week, zet dan een nieuwe ingangsdatum —
+        het lopende contract wordt dan afgesloten en eerdere jaren blijven
+        kloppen.
       </p>
 
       {melding ? (
