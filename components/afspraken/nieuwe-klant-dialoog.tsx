@@ -17,22 +17,62 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-/** Dialoog "nieuwe school", geopend vanuit het afspraakformulier (SPEC.md 6.2). */
+/**
+ * Dialoog "nieuwe school", geopend vanuit het afspraakformulier.
+ *
+ * Let op: hier staat bewust **geen `<form>`**. Deze dialoog wordt geopend
+ * vanuit het afspraakformulier, en hoewel de inhoud via een portal buiten dat
+ * formulier in de DOM terechtkomt, blijft hij in de React-boom een kind ervan.
+ * Een verzendsignaal liep daardoor omhoog naar react-hook-form, dat het met
+ * `preventDefault` tegenhield — de school werd dan zonder enige melding niet
+ * opgeslagen. Met losse velden en een gewone knop kan dat niet gebeuren.
+ */
+
+const LEEG = {
+  naam: "",
+  plaats: "",
+  postcode: "",
+  adres: "",
+  reistijdEnkelMinuten: "0",
+  reisafstandEnkelKm: "",
+  telefoonAlgemeen: "",
+  emailAlgemeen: "",
+  contactpersoonNaam: "",
+  contactpersoonFunctie: "",
+  contactpersoonEmail: "",
+};
+
 export function NieuweKlantDialoog({
   onToegevoegd,
 }: {
   onToegevoegd: (klantId: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [waarden, setWaarden] = React.useState(LEEG);
   const [bezig, setBezig] = React.useState(false);
   const [fouten, setFouten] = React.useState<Record<string, string>>({});
   const [melding, setMelding] = React.useState<string | null>(null);
 
-  async function verstuur(formulier: FormData) {
+  function zet(veld: keyof typeof LEEG) {
+    return (gebeurtenis: React.ChangeEvent<HTMLInputElement>) =>
+      setWaarden((huidig) => ({
+        ...huidig,
+        [veld]: gebeurtenis.target.value,
+      }));
+  }
+
+  function sluit() {
+    setOpen(false);
+    setWaarden(LEEG);
+    setFouten({});
+    setMelding(null);
+  }
+
+  async function bewaar() {
     setBezig(true);
     setMelding(null);
 
-    const resultaat = await bewaarKlant(Object.fromEntries(formulier));
+    const resultaat = await bewaarKlant(waarden);
 
     setBezig(false);
     if (!resultaat.gelukt) {
@@ -41,13 +81,16 @@ export function NieuweKlantDialoog({
       return;
     }
 
-    setFouten({});
-    setOpen(false);
-    if (resultaat.id) onToegevoegd(resultaat.id);
+    const id = resultaat.id;
+    sluit();
+    if (id) onToegevoegd(id);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nieuweStand) => (nieuweStand ? setOpen(true) : sluit())}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <Plus aria-hidden />
@@ -63,73 +106,70 @@ export function NieuweKlantDialoog({
           </DialogDescription>
         </DialogHeader>
 
-        <form action={verstuur} className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="klant-naam">Naam van de school</Label>
-            <Input id="klant-naam" name="naam" required autoComplete="off" />
-            <Fout melding={fouten.naam} />
+        <div className="grid gap-4">
+          <Veld
+            id="klant-naam"
+            label="Naam van de school"
+            waarde={waarden.naam}
+            onWijzig={zet("naam")}
+            fout={fouten.naam}
+            autoFocus
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Veld
+              id="klant-plaats"
+              label="Plaats"
+              waarde={waarden.plaats}
+              onWijzig={zet("plaats")}
+              fout={fouten.plaats}
+            />
+            <Veld
+              id="klant-postcode"
+              label="Postcode"
+              waarde={waarden.postcode}
+              onWijzig={zet("postcode")}
+            />
+          </div>
+
+          <Veld
+            id="klant-adres"
+            label="Adres"
+            waarde={waarden.adres}
+            onWijzig={zet("adres")}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Veld
+              id="klant-reistijd"
+              label="Reistijd enkele reis (minuten)"
+              type="number"
+              waarde={waarden.reistijdEnkelMinuten}
+              onWijzig={zet("reistijdEnkelMinuten")}
+              fout={fouten.reistijdEnkelMinuten}
+            />
+            <Veld
+              id="klant-afstand"
+              label="Afstand enkele reis (km)"
+              type="number"
+              waarde={waarden.reisafstandEnkelKm}
+              onWijzig={zet("reisafstandEnkelKm")}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-plaats">Plaats</Label>
-              <Input id="klant-plaats" name="plaats" required autoComplete="off" />
-              <Fout melding={fouten.plaats} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-postcode">Postcode</Label>
-              <Input id="klant-postcode" name="postcode" autoComplete="off" />
-            </div>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="klant-adres">Adres</Label>
-            <Input id="klant-adres" name="adres" autoComplete="off" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-reistijd">Reistijd enkele reis (minuten)</Label>
-              <Input
-                id="klant-reistijd"
-                name="reistijdEnkelMinuten"
-                type="number"
-                min={0}
-                max={600}
-                defaultValue={0}
-                required
-              />
-              <Fout melding={fouten.reistijdEnkelMinuten} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-afstand">Afstand enkele reis (km)</Label>
-              <Input
-                id="klant-afstand"
-                name="reisafstandEnkelKm"
-                type="number"
-                min={0}
-                step="0.1"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-contact">Contactpersoon</Label>
-              <Input
-                id="klant-contact"
-                name="contactpersoonNaam"
-                autoComplete="off"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="klant-functie">Functie</Label>
-              <Input
-                id="klant-functie"
-                name="contactpersoonFunctie"
-                autoComplete="off"
-              />
-            </div>
+            <Veld
+              id="klant-contact"
+              label="Contactpersoon"
+              waarde={waarden.contactpersoonNaam}
+              onWijzig={zet("contactpersoonNaam")}
+            />
+            <Veld
+              id="klant-functie"
+              label="Functie"
+              waarde={waarden.contactpersoonFunctie}
+              onWijzig={zet("contactpersoonFunctie")}
+            />
           </div>
 
           {melding ? (
@@ -137,30 +177,55 @@ export function NieuweKlantDialoog({
               {melding}
             </p>
           ) : null}
+        </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-            >
-              Annuleren
-            </Button>
-            <Button type="submit" disabled={bezig}>
-              {bezig ? "Bezig met opslaan…" : "School toevoegen"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={sluit}>
+            Annuleren
+          </Button>
+          <Button type="button" onClick={bewaar} disabled={bezig}>
+            {bezig ? "Bezig met opslaan…" : "School toevoegen"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function Fout({ melding }: { melding?: string }) {
-  if (!melding) return null;
+function Veld({
+  id,
+  label,
+  waarde,
+  onWijzig,
+  fout,
+  type = "text",
+  autoFocus,
+}: {
+  id: string;
+  label: string;
+  waarde: string;
+  onWijzig: (gebeurtenis: React.ChangeEvent<HTMLInputElement>) => void;
+  fout?: string;
+  type?: string;
+  autoFocus?: boolean;
+}) {
   return (
-    <p className="text-xs text-destructive" role="alert">
-      {melding}
-    </p>
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={type}
+        value={waarde}
+        onChange={onWijzig}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        aria-invalid={fout ? true : undefined}
+      />
+      {fout ? (
+        <p className="text-xs text-destructive" role="alert">
+          {fout}
+        </p>
+      ) : null}
+    </div>
   );
 }
