@@ -73,6 +73,8 @@ een leeg project. Zie `PUBLICEREN.md`.
 
 ## Status
 
-Werkend, maar nog zonder database en zonder inlog. Zie `PUBLICEREN.md` voor de
-weg naar live, `SPEC.md` hoofdstuk 8 voor de fasering en hoofdstuk 10 voor wat
-expliciet niet in versie 1 zit.
+Draait op Supabase en zit achter een inlog. Nog te doen: tweestapsverificatie,
+medewerkers uitnodigen per e-mail, schoolvakanties en instellingen kunnen
+wijzigen in Beheer, en de autorisatietest uit `SPEC.md` 9.7. Zie `PUBLICEREN.md`
+voor het inrichten, `SPEC.md` hoofdstuk 8 voor de fasering en hoofdstuk 10 voor
+wat expliciet niet in versie 1 zit.
