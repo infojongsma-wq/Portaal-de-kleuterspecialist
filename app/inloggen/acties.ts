@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -85,7 +86,15 @@ export async function vraagWachtwoordHerstel(
   }
 
   const supabase = await supabaseServer();
-  await supabase.auth.resetPasswordForEmail(gecontroleerd.data.email);
+  const kop = await headers();
+  const host = kop.get("x-forwarded-host") ?? kop.get("host") ?? "";
+  const protocol = kop.get("x-forwarded-proto") ?? "https";
+
+  // Zonder bestemming komt de herstellink uit op het adres dat in Supabase
+  // staat ingesteld, en dat is niet per se dit portaal.
+  await supabase.auth.resetPasswordForEmail(gecontroleerd.data.email, {
+    redirectTo: `${protocol}://${host}/instellen`,
+  });
 
   // Altijd dezelfde bevestiging, ook als het adres niet bestaat. Anders is het
   // formulier te gebruiken om uit te zoeken wie er een account heeft.

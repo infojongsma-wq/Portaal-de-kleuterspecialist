@@ -73,8 +73,9 @@ een leeg project. Zie `PUBLICEREN.md`.
 
 ## Status
 
-Draait op Supabase en zit achter een inlog. Nog te doen: tweestapsverificatie,
-medewerkers uitnodigen per e-mail, schoolvakanties en instellingen kunnen
-wijzigen in Beheer, en de autorisatietest uit `SPEC.md` 9.7. Zie `PUBLICEREN.md`
+Draait op Supabase en zit achter een inlog. Medewerkers zijn aan te maken, te
+wijzigen en uit te nodigen per e-mail. Nog te doen: tweestapsverificatie,
+schoolvakanties en instellingen kunnen wijzigen in Beheer, en de
+autorisatietest uit `SPEC.md` 9.7. Zie `PUBLICEREN.md`
 voor het inrichten, `SPEC.md` hoofdstuk 8 voor de fasering en hoofdstuk 10 voor
 wat expliciet niet in versie 1 zit.

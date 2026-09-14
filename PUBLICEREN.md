@@ -196,9 +196,6 @@ where id not in (select auth_gebruiker_id from public.profielen where auth_gebru
 ### Wat er nog niet is
 
 - **Tweestapsverificatie** voor de beheerder (SPEC.md hoofdstuk 7).
-- **Medewerkers uitnodigen per e-mail** vanuit het beheerdersportaal. Een
-  tweede medewerker maak je voorlopig aan via Authentication → Users, net als
-  hierboven.
 
 ### Wat wél werkt
 
@@ -206,6 +203,42 @@ Row Level Security doet het beveiligingswerk in de database zelf: een
 medewerker kan alleen bij de eigen afspraken en uren, ook als iemand de app zou
 proberen te omzeilen. De rol komt uit `profielen` en nooit uit iets dat de
 browser kan zetten.
+
+---
+
+## Stap 4b — Medewerkers kunnen uitnodigen (jij, ±5 minuten)
+
+In het beheerdersportaal maak je een medewerker aan en klik je op
+**Uitnodigen**. Supabase stuurt dan een e-mail met een eenmalige link naar
+`/instellen`, waar de medewerker zelf een wachtwoord kiest. Daarvoor moeten
+deze drie dingen kloppen:
+
+1. **De geheime sleutel staat in Vercel.** Zonder `SUPABASE_SERVICE_ROLE_KEY`
+   kan het portaal geen accounts aanmaken; je krijgt dan een melding die dat
+   zegt. Zie stap 3.
+
+2. **Supabase weet waar het portaal staat.** Ga naar **Authentication** →
+   **URL Configuration**:
+   - **Site URL:** `https://portaal-de-kleuterspecialist.vercel.app`
+   - **Redirect URLs:** voeg toe
+     `https://portaal-de-kleuterspecialist.vercel.app/**`
+
+   Staat dat er niet in, dan weigert Supabase de link uit de e-mail. Krijg je
+   later een eigen webadres (stap 6), zet dat er dan ook bij.
+
+3. **Er is een afzender voor e-mail.** Supabase verstuurt standaard zelf mail,
+   maar dat is bedoeld om mee te proberen: een paar berichten per uur, en niet
+   altijd betrouwbaar bezorgd. Voor echt gebruik zet je bij **Authentication**
+   → **Emails** → **SMTP Settings** je eigen afzender aan, bijvoorbeeld die van
+   Strato.
+
+**Bestaat het account al**, bijvoorbeeld omdat je het met de hand hebt
+aangemaakt? Dan koppelt de knop **Uitnodigen** dat bestaande account aan het
+profiel, en kan de medewerker via "Wachtwoord vergeten" naar binnen.
+
+**Wachtwoordlengte.** Zet bij **Authentication** → **Policies** de minimale
+lengte op **12 tekens** (SPEC.md hoofdstuk 7). Het portaal vraagt er zelf ook
+om, maar de database hoort de grens te bewaken.
 
 ---
 
@@ -264,8 +297,9 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Inloggen met e-mail en wachtwoord | gebouwd |
 | Gegevens bewaren in de database | gebouwd |
 | Contracturen vastleggen in Beheer | gebouwd |
+| Medewerkers aanmaken en wijzigen in Beheer | gebouwd |
+| Medewerkers uitnodigen per e-mail | gebouwd — zie stap 4b |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
-| Medewerkers uitnodigen per e-mail | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | nog te lezen, niet te wijzigen |
 | Wijzigingslog bekijken | triggers vullen hem al, scherm ontbreekt |

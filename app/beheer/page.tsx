@@ -351,7 +351,6 @@ export default async function BeheerPagina() {
           </CardHeader>
           <CardContent>
             <ul className="grid gap-1.5 text-sm text-muted-foreground">
-              <li>Medewerkers uitnodigen per e-mail.</li>
               <li>
                 Niet-inzetbare dagen en instellingen wijzigen — nu alleen te
                 lezen.

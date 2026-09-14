@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, X } from "lucide-react";
+import { Mail, Pencil, Plus, X } from "lucide-react";
 
-import { bewaarMedewerker } from "@/app/beheer/acties";
+import { bewaarMedewerker, nodigMedewerkerUit } from "@/app/beheer/acties";
 import { ContractFormulier } from "@/components/beheer/contract-formulier";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +58,7 @@ export function MedewerkersBeheer({
   const [bezig, setBezig] = React.useState(false);
   const [melding, setMelding] = React.useState<string | null>(null);
   const [fouten, setFouten] = React.useState<Record<string, string>>({});
+  const [uitnodigen, setUitnodigen] = React.useState<string | null>(null);
 
   // De datumvelden zijn eigen componenten en geen <input type="date">, dus hun
   // waarde gaat niet vanzelf met het formulier mee.
@@ -116,6 +117,15 @@ export function MedewerkersBeheer({
     }
   }
 
+  async function nodigUit(profielId: string) {
+    setUitnodigen(profielId);
+    setMelding(null);
+    const resultaat = await nodigMedewerkerUit(profielId);
+    setUitnodigen(null);
+    setMelding(resultaat.melding ?? null);
+    if (resultaat.gelukt) router.refresh();
+  }
+
   const gekozen = bewerken;
   const gekozenContract =
     medewerkers.find((regel) => regel.profiel.id === gekozen?.id)?.contract ??
@@ -166,9 +176,16 @@ export function MedewerkersBeheer({
                 {profiel.heeftAccount ? (
                   <span className="text-sm text-merk-hardgroen">ja</span>
                 ) : (
-                  <span className="text-sm text-muted-foreground">
-                    nog geen
-                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={uitnodigen === profiel.id}
+                    onClick={() => nodigUit(profiel.id)}
+                  >
+                    <Mail aria-hidden />
+                    {uitnodigen === profiel.id ? "Bezig…" : "Uitnodigen"}
+                  </Button>
                 )}
               </TableCell>
               <TableCell>

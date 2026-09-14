@@ -1,8 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 
 import { werkset } from "@/lib/data/werkset";
+import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { supabaseServer } from "@/lib/supabase/server";
 import { medewerkerSchema } from "@/lib/validatie/medewerker";
 
@@ -131,4 +133,129 @@ export async function bewaarMedewerker(
       "Medewerker toegevoegd. Hij kan nog niet inloggen; stuur daarvoor een uitnodiging.",
     id: data.id as string,
   };
+}
+
+/** Het adres waarop dit portaal draait, zoals de browser het net opvroeg. */
+async function portaalAdres(): Promise<string> {
+  const kop = await headers();
+  const host = kop.get("x-forwarded-host") ?? kop.get("host") ?? "";
+  const protocol = kop.get("x-forwarded-proto") ?? "https";
+  return `${protocol}://${host}`;
+}
+
+/**
+ * Een medewerker uitnodigen om in te loggen (SPEC.md 6.6).
+ *
+ * Supabase stuurt een e-mail met een eenmalige link naar `/instellen`, waar de
+ * medewerker een wachtwoord kiest. De databasetrigger koppelt het nieuwe
+ * account op e-mailadres aan het profiel dat hier al staat.
+ *
+ * Dit is de enige plek waar de geheime sleutel wordt gebruikt: accounts
+ * aanmaken kan niet met de sessie van een gewone gebruiker.
+ */
+export async function nodigMedewerkerUit(
+  profielId: string,
+): Promise<BeheerResultaat> {
+  const gegevens = await werkset();
+
+  if (gegevens.ik.rol !== "beheerder") {
+    return { gelukt: false, melding: "Alleen de beheerder kan uitnodigen." };
+  }
+
+  const profiel = gegevens.profielen.find((regel) => regel.id === profielId);
+
+  if (!profiel) {
+    return { gelukt: false, melding: "Deze medewerker staat niet in het portaal." };
+  }
+  if (profiel.heeftAccount) {
+    return {
+      gelukt: false,
+      melding:
+        "Deze medewerker heeft al een inlog. Lukt inloggen niet, laat hem dan \"Wachtwoord vergeten\" gebruiken.",
+    };
+  }
+
+  const beheer = supabaseBeheer();
+
+  if (!beheer) {
+    return {
+      gelukt: false,
+      melding:
+        "Uitnodigen kan nog niet: de geheime sleutel (SUPABASE_SERVICE_ROLE_KEY) staat niet bij de omgevingsvariabelen. Zie PUBLICEREN.md stap 3.",
+    };
+  }
+
+  const { error } = await beheer.auth.admin.inviteUserByEmail(profiel.email, {
+    redirectTo: `${await portaalAdres()}/instellen`,
+    data: { voornaam: profiel.voornaam, achternaam: profiel.achternaam },
+  });
+
+  if (error) {
+    // Bestaat het account al — bijvoorbeeld met de hand aangemaakt in
+    // Supabase — dan is er niets uit te nodigen, maar mist alleen de koppeling
+    // met dit profiel. Die leggen we hier alsnog.
+    const bestaatAl =
+      error.status === 422 ||
+      /already been registered|already registered|already exists/i.test(
+        error.message,
+      );
+
+    if (bestaatAl) {
+      const gekoppeld = await koppelBestaandAccount(profiel.id, profiel.email);
+      return gekoppeld
+        ? {
+            gelukt: true,
+            melding:
+              "Er bestond al een account met dit e-mailadres. Dat is nu aan dit profiel gekoppeld; laat de medewerker zo nodig \"Wachtwoord vergeten\" gebruiken.",
+          }
+        : {
+            gelukt: false,
+            melding:
+              "Er bestaat al een account met dit e-mailadres, maar dat kon niet aan dit profiel worden gekoppeld.",
+          };
+    }
+
+    return {
+      gelukt: false,
+      melding: `De uitnodiging kon niet worden verstuurd. (${error.message}) Controleer in Supabase of het adres van dit portaal bij Authentication → URL Configuration staat, en of er een afzender voor e-mail is ingesteld.`,
+    };
+  }
+
+  ververs();
+  return {
+    gelukt: true,
+    melding: `Uitnodiging verstuurd naar ${profiel.email}.`,
+  };
+}
+
+/** Zoekt een bestaand account op e-mailadres en hangt het aan het profiel. */
+async function koppelBestaandAccount(
+  profielId: string,
+  email: string,
+): Promise<boolean> {
+  const beheer = supabaseBeheer();
+  if (!beheer) return false;
+
+  const { data, error } = await beheer.auth.admin.listUsers({ perPage: 200 });
+  if (error) return false;
+
+  const gezocht = email.trim().toLowerCase();
+  const account = data.users.find(
+    (gebruiker) => (gebruiker.email ?? "").toLowerCase() === gezocht,
+  );
+  if (!account) return false;
+
+  const supabase = await supabaseServer();
+  const { error: koppelFout } = await supabase
+    .from("profielen")
+    .update({
+      auth_gebruiker_id: account.id,
+      gewijzigd_op: new Date().toISOString(),
+    })
+    .eq("id", profielId);
+
+  if (koppelFout) return false;
+
+  ververs();
+  return true;
 }
