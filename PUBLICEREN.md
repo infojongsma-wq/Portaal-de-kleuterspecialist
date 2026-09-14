@@ -109,11 +109,50 @@ Klik linksonder op **Project Settings** (het tandwiel).
    Raak je de geheime sleutel kwijt, dan is dat geen ramp: in Supabase maak je
    er een nieuwe aan.
 
+**Let op: omgevingsvariabelen gaan pas mee bij een nieuwe bouw.** Vercel bakt ze
+erin op het moment dat de website wordt gebouwd. Voeg je ze achteraf toe, dan
+moet er daarna nog één keer opnieuw gebouwd worden, anders draait de website
+nog met de oude (lege) waarden.
+
 **Over de geheime sleutel.** Die geeft volledige toegang tot alle gegevens en
 omzeilt alle beveiligingsregels. Zet hem **alleen** in Vercel, plak hem nooit in
 een chat, een e-mail of een bestand in de repository. De publieke sleutel is wel
 veilig om te delen — die is bedoeld om in de browser te staan en geeft op
 zichzelf nergens toegang toe; de beveiligingsregels in de database doen dat werk.
+
+---
+
+## Stap 3b — Vercel de juiste tak laten publiceren (jij, ±2 minuten)
+
+Vercel maakt twee soorten websites van dezelfde code:
+
+| Soort | Adres | Waarvoor |
+|---|---|---|
+| **Production** | `portaal-de-kleuterspecialist.vercel.app` | het echte portaal |
+| **Preview** | een lang adres met `-git-` erin | een proefversie per wijziging |
+
+Welke van de twee je krijgt, hangt af van de **tak** (branch) waar de code op
+staat. Vercel publiceert standaard de tak `main` als productie. Al het werk aan
+dit portaal staat op de tak `claude/kleuterspecialist-portaal-prototype-9roj7p`,
+en zolang Vercel die niet als productietak kent, komt elke verbetering alléén op
+een preview-adres terecht — het echte adres blijft dan op de oudste versie
+staan.
+
+Zo zet je dat goed:
+
+1. Open je project in Vercel → **Settings** → **Git**.
+2. Bij **Production Branch** staat `main`. Zet die op
+   `claude/kleuterspecialist-portaal-prototype-9roj7p` en klik **Save**.
+3. Vanaf dan wordt elke wijziging die wordt doorgestuurd, vanzelf op het echte
+   adres gezet. Een wijziging die er al vóór deze instelling was, komt er niet
+   met terugwerkende kracht op: die publiceer je één keer handmatig via
+   **Deployments** → de bovenste regel → het knopje **⋯** → **Promote to
+   Production**.
+
+**Zie je nog steeds de oude versie?** Kijk dan in **Deployments** naar de
+bovenste regel. Staat daar het label `Production` bij, en klopt de omschrijving
+met de laatste wijziging? Zo niet, dan kijk je naar een preview en staat de
+productietak nog verkeerd.
 
 ---
 
