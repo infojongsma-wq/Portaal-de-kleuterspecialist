@@ -48,22 +48,17 @@ De opbouw van de database staat al klaar in `supabase/migrations/`. Die moet
 
 **De makkelijkste weg, zonder installatie:**
 
-1. Open je project in Supabase en klik links op **SQL Editor**.
-2. Open in de map `supabase/migrations/` het eerste bestand, kopieer de hele
-   inhoud, plak die in de editor en klik **Run**.
-3. Herhaal dat voor elk volgend bestand, **op volgorde van de naam** — die
-   begint met een datum, dus alfabetisch is ook chronologisch:
+1. Open het bestand **`supabase/volledig-schema.sql`** uit deze repository.
+2. Selecteer alles (Ctrl+A) en kopieer het (Ctrl+C).
+3. Open je project in Supabase en klik links op **SQL Editor**.
+4. Plak alles in het venster en klik rechtsonder op **Run**.
 
-   | Volgorde | Bestand |
-   |---|---|
-   | 1 | `20260803120000_basisschema.sql` |
-   | 2 | `20260803120100_wijzigingslog.sql` |
-   | 3 | `20260803120200_rls.sql` |
-   | 4 | `20260803120300_startgegevens.sql` |
-   | 5 | `20260803150000_dagdelen_en_ongeplande_afspraken.sql` |
-   | 6 | `20260914090000_urencategorieen_en_observatie.sql` |
+Je hoort onderin `Success. No rows returned` te zien. Dat is goed: het bouwt
+tabellen, die geven zelf niets terug.
 
-De volgorde is niet vrijblijvend: latere bestanden bouwen voort op eerdere.
+**Voor later, als je met de opdrachtregel werkt:** de losse migraties staan in
+`supabase/migrations/` en gaan met `npx supabase db push`. Gebruik óf het
+volledige bestand, óf de losse migraties — niet allebei.
 
 ---
 
