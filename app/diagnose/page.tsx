@@ -63,6 +63,25 @@ function uitlegBijCode(code: string | undefined): string | null {
   }
 }
 
+/** Alles wat de database over de fout kwijt wil, op één regel. */
+function meldingVan(fout: {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+}): string {
+  const delen = [
+    fout.code ? `code ${fout.code}` : null,
+    fout.message || null,
+    fout.details || null,
+    fout.hint || null,
+  ].filter(Boolean);
+
+  return delen.length > 0
+    ? delen.join(" — ")
+    : "De database gaf geen toelichting terug.";
+}
+
 function Regel({ uitkomst }: { uitkomst: Uitkomst }) {
   return (
     <li className="flex gap-3 border-b py-2 last:border-b-0">
@@ -135,12 +154,14 @@ export default async function DiagnosePagina() {
     );
 
     if (data?.user) {
-      // Per tabel kijken of hij bestaat en of de beveiligingsregels hem
-      // doorlaten. `head` haalt alleen de telling op, geen gegevens.
+      // Precies dezelfde query als `lib/data/werkset.ts` stelt: alle kolommen,
+      // alle rijen die de beveiligingsregels doorlaten. Bewust geen
+      // `head`-verzoek — dat geeft geen antwoordtekst terug, en juist die
+      // tekst is wat we hier zoeken.
       for (const tabel of TABELLEN) {
-        const { count, error: tabelFout } = await supabase
+        const { data: rijen, error: tabelFout } = await supabase
           .from(tabel)
-          .select("*", { count: "exact", head: true });
+          .select("*");
 
         uitkomsten.push(
           tabelFout
@@ -149,13 +170,20 @@ export default async function DiagnosePagina() {
                 goed: false,
                 toelichting:
                   uitlegBijCode(tabelFout.code) ??
-                  "Deze tabel kon niet worden gelezen.",
-                melding: `${tabelFout.code ?? "?"}: ${tabelFout.message}`,
+                  (tabelFout.code || tabelFout.message
+                    ? "Deze tabel kon niet worden gelezen."
+                    : // Geen code én geen tekst betekent dat er helemaal geen
+                      // antwoord kwam. Dan ligt het niet aan de inhoud van de
+                      // database maar aan de verbinding ernaartoe.
+                      "Er kwam geen antwoord van de database. Dat wijst op de verbinding tussen Vercel en Supabase, niet op de gegevens: een Supabase-project dat in de pauzestand staat, of een URL van een ánder project dan de sleutel."),
+                melding: meldingVan(tabelFout),
               }
             : {
                 naam: `Tabel ${tabel}`,
                 goed: true,
-                toelichting: `${count ?? 0} ${count === 1 ? "rij" : "rijen"} zichtbaar.`,
+                toelichting: `${rijen?.length ?? 0} ${
+                  rijen?.length === 1 ? "rij" : "rijen"
+                } zichtbaar.`,
               },
         );
       }
@@ -176,7 +204,7 @@ export default async function DiagnosePagina() {
               toelichting:
                 uitlegBijCode(profielFout.code) ??
                 "Het profiel kon niet worden opgezocht.",
-              melding: `${profielFout.code ?? "?"}: ${profielFout.message}`,
+              melding: meldingVan(profielFout),
             }
           : profiel
             ? {
