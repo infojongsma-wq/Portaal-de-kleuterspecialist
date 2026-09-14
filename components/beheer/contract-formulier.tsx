@@ -10,6 +10,7 @@ import { Datumveld } from "@/components/ui/datumveld";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatteerUren } from "@/lib/formatteer";
+import { FULLTIME_UREN_PER_WEEK } from "@/lib/uren";
 
 /**
  * De contracturen per week vastleggen (SPEC.md 4.2).
@@ -42,13 +43,18 @@ export function ContractFormulier({
   const [datum, setDatum] = React.useState(ingangsdatum ?? vandaag);
   const [bezig, setBezig] = React.useState(false);
   const [melding, setMelding] = React.useState<string | null>(null);
+  const [norm, setNorm] = React.useState(
+    normFulltime != null ? String(normFulltime) : "",
+  );
 
   async function bewaar() {
     setBezig(true);
+    const ingevuldeNorm = norm.trim();
     const resultaat = await bewaarContract(
       profielId,
       Number(uren.replace(",", ".")),
       datum,
+      ingevuldeNorm === "" ? null : Number(ingevuldeNorm.replace(",", ".")),
     );
     setBezig(false);
     setMelding(resultaat.melding ?? null);
@@ -56,7 +62,14 @@ export function ContractFormulier({
   }
 
   const getal = Number(uren.replace(",", "."));
-  const werktijdfactor = Number.isFinite(getal) ? getal / 40 : 0;
+  const werktijdfactor = Number.isFinite(getal)
+    ? getal / FULLTIME_UREN_PER_WEEK
+    : 0;
+
+  const normGetal = Number(norm.replace(",", "."));
+  const gekozenNorm = Number.isFinite(normGetal) && normGetal > 0
+    ? normGetal
+    : normFulltime;
 
   return (
     <div className="grid gap-3">
@@ -83,6 +96,20 @@ export function ContractFormulier({
           />
         </div>
 
+        <div className="grid w-44 gap-1.5">
+          <Label htmlFor={`norm-${profielId}`}>Jaarurennorm bij 1,0 fte</Label>
+          <Input
+            id={`norm-${profielId}`}
+            type="number"
+            step="1"
+            min={500}
+            max={2500}
+            value={norm}
+            placeholder={normFulltime != null ? undefined : "volgens cao"}
+            onChange={(gebeurtenis) => setNorm(gebeurtenis.target.value)}
+          />
+        </div>
+
         <Button type="button" onClick={bewaar} disabled={bezig}>
           <Save aria-hidden />
           {bezig ? "Bezig…" : "Contract vastleggen"}
@@ -90,13 +117,21 @@ export function ContractFormulier({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Werktijdfactor {formatteerUren(werktijdfactor)}
-        {normFulltime != null
-          ? ` · jaarnorm ${formatteerUren(normFulltime * werktijdfactor)} uur`
+        Deeltijdfactor {formatteerUren(werktijdfactor)} ({formatteerUren(getal)}{" "}
+        van de {FULLTIME_UREN_PER_WEEK} uur)
+        {gekozenNorm != null
+          ? ` · jaarnorm ${formatteerUren(gekozenNorm * werktijdfactor)} uur`
           : " · de jaarnorm volgt zodra het contract is vastgelegd"}
-        . Verandert het aantal uren per week, zet dan een nieuwe ingangsdatum —
-        het lopende contract wordt dan afgesloten en eerdere jaren blijven
-        kloppen.
+        . De deeltijdfactor en de jaarnorm worden altijd berekend en nooit los
+        ingevoerd. Verandert het aantal uren per week, zet dan een nieuwe
+        ingangsdatum — het lopende contract wordt dan afgesloten en eerdere
+        jaren blijven kloppen.
+      </p>
+
+      <p className="text-xs text-muted-foreground">
+        De jaarurennorm is het aantal uren bij een voltijds dienstverband,
+        volgens de cao. Laat je het veld leeg bij een eerste contract, dan houdt
+        het portaal de norm aan die in de database staat.
       </p>
 
       {melding ? (

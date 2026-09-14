@@ -624,6 +624,13 @@ export async function bewaarContract(
   profielId: string,
   urenPerWeek: number,
   ingangsdatum: string,
+  /**
+   * De jaarurennorm bij een voltijds dienstverband. Laat je dit weg, dan houdt
+   * het contract de norm die er al staat — en bij een nieuw contract de
+   * standaard uit de database. Het getal hoort daar thuis en niet in de code
+   * (CLAUDE.md, "Rekenregels — nooit hardcoderen").
+   */
+  normFulltime?: number | null,
 ): Promise<ActieResultaat> {
   const gegevens = await werkset();
   const supabase = await supabaseServer();
@@ -637,6 +644,18 @@ export async function bewaarContract(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ingangsdatum)) {
     return fout("Vul een geldige ingangsdatum in.");
   }
+  if (
+    normFulltime != null &&
+    (!Number.isFinite(normFulltime) || normFulltime < 500 || normFulltime > 2500)
+  ) {
+    return fout(
+      "Vul een jaarurennorm tussen 500 en 2500 uur in, of laat het veld leeg.",
+    );
+  }
+
+  // Alleen meesturen als er een waarde is ingevuld; anders blijft staan wat er
+  // al stond.
+  const normVeld = normFulltime != null ? { norm_fulltime: normFulltime } : {};
 
   const lopend = gegevens.contracten
     .filter((contract) => contract.profielId === profielId)
@@ -647,7 +666,7 @@ export async function bewaarContract(
     if (lopend.ingangsdatum === ingangsdatum) {
       const { error } = await supabase
         .from("contracten")
-        .update({ uren_per_week: urenPerWeek })
+        .update({ uren_per_week: urenPerWeek, ...normVeld })
         .eq("id", lopend.id);
       if (error) return fout("Het contract kon niet worden bijgewerkt.", error);
       ververs();
@@ -670,6 +689,14 @@ export async function bewaarContract(
     profiel_id: profielId,
     ingangsdatum,
     uren_per_week: urenPerWeek,
+    // Zonder ingevulde norm neemt het nieuwe contract de norm over van het
+    // contract dat eraan voorafging, zodat een urenwijziging de jaarnorm niet
+    // ongemerkt terugzet.
+    ...(normVeld.norm_fulltime != null
+      ? normVeld
+      : lopend
+        ? { norm_fulltime: lopend.normFulltime }
+        : {}),
   });
   if (error) return fout("Het contract kon niet worden opgeslagen.", error);
 
