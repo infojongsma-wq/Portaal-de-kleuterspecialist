@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -219,6 +220,43 @@ export default async function DiagnosePagina() {
                   "Er hoort bij dit account een rij in de tabel profielen, maar die is er niet. Dat gebeurt als het account is aangemaakt vóórdat de migratie 20260914120000_profiel_bij_inlog.sql was gedraaid. Onderaan stap 4 van PUBLICEREN.md staat het stukje SQL dat het alsnog aanmaakt.",
               },
       );
+
+      // De geheime sleutel is alleen nodig om uit te nodigen, en alleen een
+      // beheerder doet dat. De sleutel zelf komt hier nooit op het scherm —
+      // we tonen of hij er is en of Supabase hem accepteert.
+      if (profiel?.rol === "beheerder") {
+        const beheer = supabaseBeheer();
+
+        if (!beheer) {
+          uitkomsten.push({
+            naam: "Geheime sleutel (uitnodigen)",
+            goed: false,
+            toelichting:
+              "SUPABASE_SERVICE_ROLE_KEY staat niet bij de omgevingsvariabelen, of deze bouw is van vóór het moment dat hij werd toegevoegd — na het toevoegen moet er opnieuw gebouwd worden. Uitnodigen kan dan niet; de rest van het portaal werkt gewoon door. Zie PUBLICEREN.md stap 4b.",
+          });
+        } else {
+          const { error: sleutelFout } = await beheer.auth.admin.listUsers({
+            perPage: 1,
+          });
+
+          uitkomsten.push(
+            sleutelFout
+              ? {
+                  naam: "Geheime sleutel (uitnodigen)",
+                  goed: false,
+                  toelichting:
+                    "De sleutel staat er wel, maar Supabase accepteert hem niet. Meestal hoort hij bij een ánder project, of is per ongeluk de publieke sleutel geplakt.",
+                  melding: meldingVan(sleutelFout),
+                }
+              : {
+                  naam: "Geheime sleutel (uitnodigen)",
+                  goed: true,
+                  toelichting:
+                    "Aanwezig en geaccepteerd. Uitnodigen per e-mail kan.",
+                },
+          );
+        }
+      }
     }
   }
 
