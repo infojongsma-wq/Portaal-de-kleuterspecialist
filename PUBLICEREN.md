@@ -215,13 +215,24 @@ deze drie dingen kloppen:
 
 1. **De geheime sleutel staat in Vercel.** Zonder `SUPABASE_SERVICE_ROLE_KEY`
    kan het portaal geen accounts aanmaken; je krijgt dan een melding die dat
-   zegt. Zie stap 3.
+   zegt.
+
+   Ophalen: Supabase → **Project Settings** (tandwiel) → **API Keys** → de
+   regel `service_role`, in nieuwere schermen **Secret key** (`sb_secret_…`).
+   Hij zit achter een oogje of een knop **Reveal**.
+
+   Wegzetten: Vercel → **Settings** → **Environment Variables** → naam
+   `SUPABASE_SERVICE_ROLE_KEY`, alle drie de omgevingen aanvinken, soort
+   **Sensitive**. Daarna **Deployments** → bovenste regel → **⋯** →
+   **Redeploy**, want een variabele gaat pas mee bij een nieuwe bouw.
 
 2. **Supabase weet waar het portaal staat.** Ga naar **Authentication** →
    **URL Configuration**:
-   - **Site URL:** `https://portaal-de-kleuterspecialist.vercel.app`
-   - **Redirect URLs:** voeg toe
-     `https://portaal-de-kleuterspecialist.vercel.app/**`
+   - **Site URL:** `https://portaal-de-kleuterspecialist.vercel.app` — hier
+     staat bij een nieuw project `http://localhost:3000`.
+   - **Redirect URLs:** klik **Add URL** en voeg
+     `https://portaal-de-kleuterspecialist.vercel.app/**` toe. De twee
+     sterretjes horen erbij; die staan voor alles wat erachter komt.
 
    Staat dat er niet in, dan weigert Supabase de link uit de e-mail. Krijg je
    later een eigen webadres (stap 6), zet dat er dan ook bij.
