@@ -25,6 +25,37 @@ export interface InlogResultaat {
   velden?: Record<string, string>;
 }
 
+/**
+ * Wat er misging bij het inloggen, in gewone taal.
+ *
+ * Bij een verkeerd wachtwoord blijft de melding met opzet vaag: verklappen dat
+ * een e-mailadres wél bestaat helpt iemand die wachtwoorden staat te proberen.
+ * Maar een slapende database of een blokkade na te veel pogingen is geen
+ * geheim, en wie dan "het wachtwoord klopt niet" leest, gaat eindeloos het
+ * verkeerde zoeken.
+ */
+function inlogmelding(fout: { message: string; status?: number; code?: string }): string {
+  const tekst = fout.message.toLowerCase();
+
+  if (fout.status === 429 || tekst.includes("rate limit")) {
+    return "Te veel inlogpogingen achter elkaar. Wacht een paar minuten en probeer het opnieuw.";
+  }
+  if (fout.code === "email_not_confirmed" || tekst.includes("not confirmed")) {
+    return "Dit account is nog niet bevestigd. Zet in Supabase bij Authentication → Users de bevestiging aan, of vraag een nieuwe uitnodiging.";
+  }
+  if (
+    fout.status === undefined ||
+    fout.status >= 500 ||
+    tekst.includes("fetch failed") ||
+    tekst.includes("timeout") ||
+    tekst.includes("unavailable")
+  ) {
+    return "De database antwoordt niet. Staat het Supabase-project misschien in de pauzestand, of is hij net aan het opstarten? Kijk op /diagnose.";
+  }
+
+  return "Het e-mailadres of wachtwoord klopt niet.";
+}
+
 export async function logIn(
   _vorigeStand: InlogResultaat | null,
   formulier: FormData,
@@ -49,9 +80,7 @@ export async function logIn(
   });
 
   if (error) {
-    return {
-      melding: "Het e-mailadres of wachtwoord klopt niet.",
-    };
+    return { melding: inlogmelding(error) };
   }
 
   // Alleen binnen het portaal doorsturen, nooit naar een adres dat iemand in
