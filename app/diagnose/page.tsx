@@ -112,6 +112,50 @@ function Regel({ uitkomst }: { uitkomst: Uitkomst }) {
   );
 }
 
+/**
+ * Klopt er aan bij Supabase zonder in te loggen.
+ *
+ * `/auth/v1/health` is het adres dat Supabase zelf gebruikt om te zeggen dat
+ * hij er is. Slaapt het project, dan komt er niets terug — en dat is precies
+ * wat je wilt weten als inloggen niet lukt.
+ */
+async function bereikbaarheid(omgeving: {
+  url: string;
+  publiekeSleutel: string;
+}): Promise<Uitkomst> {
+  const naam = "Supabase bereikbaar";
+
+  try {
+    const antwoord = await fetch(`${omgeving.url}/auth/v1/health`, {
+      headers: { apikey: omgeving.publiekeSleutel },
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (antwoord.ok) {
+      return { naam, goed: true, toelichting: "Supabase antwoordt." };
+    }
+
+    return {
+      naam,
+      goed: false,
+      toelichting:
+        antwoord.status === 401 || antwoord.status === 403
+          ? "Supabase antwoordt wel, maar weigert de publieke sleutel. Die hoort waarschijnlijk bij een ander project, of is in Supabase vervangen."
+          : "Supabase antwoordt, maar niet goed. Staat het project in de pauzestand of wordt er onderhoud gepleegd?",
+      melding: `HTTP ${antwoord.status}`,
+    };
+  } catch (oorzaak) {
+    return {
+      naam,
+      goed: false,
+      toelichting:
+        "Er kwam geen antwoord. Meestal staat het project in de pauzestand: een gratis Supabase-project valt in slaap na zeven dagen zonder gebruik. Open supabase.com/dashboard, kies het project en klik op Restore. Je gegevens blijven staan; na een paar minuten werkt inloggen weer.",
+      melding: oorzaak instanceof Error ? oorzaak.message : String(oorzaak),
+    };
+  }
+}
+
 export default async function DiagnosePagina() {
   const uitkomsten: Uitkomst[] = [];
   const omgeving = leesSupabaseOmgeving();
@@ -134,6 +178,12 @@ export default async function DiagnosePagina() {
   let ingelogd = false;
 
   if (omgeving) {
+    // Antwoordt Supabase überhaupt? Deze controle staat bewust vóór het
+    // inloggen, want juist als inloggen niet lukt wil je weten of de database
+    // nog wakker is. Een gratis project gaat na zeven dagen zonder gebruik in
+    // de pauzestand; inloggen ziet er dan uit als een verkeerd wachtwoord.
+    uitkomsten.push(await bereikbaarheid(omgeving));
+
     const supabase = await supabaseServer();
     const { data, error } = await supabase.auth.getUser();
     ingelogd = Boolean(data?.user);
@@ -273,7 +323,9 @@ export default async function DiagnosePagina() {
             <p className="text-sm text-muted-foreground">
               {allesGoed
                 ? "Alles wat dit scherm kan controleren is in orde."
-                : "Hieronder staat wat er niet klopt. De regels met een kruisje zijn de oorzaak."}
+                : ingelogd
+                  ? "Hieronder staat wat er niet klopt. De regels met een kruisje zijn de oorzaak."
+                  : "Je bent niet ingelogd, dus verder dan de eerste regels komt dit scherm niet. Staat er bij Supabase bereikbaar een kruisje, dan ligt het daaraan en niet aan je wachtwoord."}
             </p>
 
             <ul className="grid">
