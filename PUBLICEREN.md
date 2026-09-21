@@ -261,10 +261,14 @@ Voordat je echte uren gaat bijhouden:
   vanzelf uit. Zonder contract kan het portaal geen norm berekenen.
 - **Datum indiensttreding.** Bepaalt de berekening naar rato in het eerste
   jaar. Staat in `profielen`, veld `in_dienst_vanaf`.
-- **Schoolvakanties.** De vakantiedagen die er nu in staan zijn bij benadering
-  ingevuld en zijn **geen officiële data**. Vervang ze per schooljaar door de
-  echte data van regio Noord. Zolang dat niet klopt, klopt de jaarnorm ook niet
-  — het portaal waarschuwt daar zelf over.
+- **Schoolvakanties.** Vul per schooljaar de officiële data van regio Noord in.
+  Ze veranderen niets aan het aantal uren: de jaarnorm van 1659 uur is de
+  netto jaartaak uit de cao, waar de 428 vakantie-uren al vanaf zijn. Ze bepalen
+  wanneer die uren gemaakt horen te worden — de normlijn staat stil in een
+  schoolvakantie. Ontbreken ze, dan lijkt het in juli alsof er achterstand is.
+  Eén uitzondering waarbij ze wél het aantal bepalen: bij een dienstverband dat
+  midden in het jaar begint of eindigt, wordt de norm naar rato over de
+  inzetbare dagen berekend.
 - **Soorten trainingen.** Vul bij Beheer je eigen trainingen aan, met de juiste
   uren per soort.
 - **Logo.** Staat erin: `public/logo.svg` is het echte appel-puzzellogo, omgezet

@@ -224,7 +224,10 @@ export default async function BeheerPagina() {
                         <span>
                           {balans.inzetbareDagenJaar} inzetbare dagen berekend,
                           terwijl er ongeveer 207 worden verwacht. Vul de
-                          schoolvakanties en feestdagen aan.
+                          schoolvakanties en feestdagen aan. Het aantal uren
+                          hieronder klopt wel; alleen de verdeling over het jaar
+                          niet, en daarmee de regel &quot;verwacht tot
+                          vandaag&quot;.
                         </span>
                       </p>
                     ) : null}
@@ -310,15 +313,20 @@ export default async function BeheerPagina() {
           <CardHeader>
             <CardTitle>Niet-inzetbare dagen</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Schoolvakanties en feestdagen van regio Noord. Ze bepalen over
-              hoeveel dagen de jaarnorm wordt uitgesmeerd.
+              Schoolvakanties en feestdagen van regio Noord. Ze veranderen niets
+              aan het <strong>aantal</strong> uren dat je moet maken — de
+              jaarnorm van 1659 uur bij een voltijds dienstverband heeft de
+              vakantie-uren er al uit. Ze bepalen <strong>wanneer</strong> je
+              die uren geacht wordt te maken: de normlijn staat stil tijdens een
+              schoolvakantie en loopt tijdens schoolweken.
             </p>
           </CardHeader>
           <CardContent className="grid gap-3">
             {perJaar.size === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Er staan nog geen vakantiedagen in. Zolang dat zo is, rekent het
-                portaal met alle weekdagen en klopt de jaarnorm niet.
+                Er staan nog geen vakantiedagen in. De jaarnorm klopt wel, maar
+                het portaal smeert hem uit over alle weekdagen. In een
+                vakantieweek lijkt het daardoor alsof er achterstand ontstaat.
               </p>
             ) : (
               <ul className="grid gap-1.5 text-sm">
@@ -335,8 +343,10 @@ export default async function BeheerPagina() {
               </ul>
             )}
             <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-              Vul per schooljaar de officiële vakantiedata van regio Noord in
-              voordat de urenverantwoording wordt gebruikt.
+              Vul per schooljaar de officiële vakantiedata van regio Noord in.
+              Eén uitzondering waarbij ze wél het aantal uren bepalen: begint of
+              eindigt een dienstverband midden in het jaar, dan wordt de norm
+              naar rato berekend over de inzetbare dagen.
             </p>
           </CardContent>
         </Card>

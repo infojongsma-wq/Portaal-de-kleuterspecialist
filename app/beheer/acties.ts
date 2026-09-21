@@ -135,6 +135,29 @@ export async function bewaarMedewerker(
   };
 }
 
+/**
+ * Alles wat Supabase over een authenticatiefout kwijt wil, op één regel.
+ *
+ * De tekst van zo'n fout is soms leeg — dan blijft alleen "{}" over, en daar
+ * kan niemand iets mee. De code en de HTTP-status zeggen dan meer.
+ */
+function authFoutTekst(fout: {
+  message?: string;
+  status?: number;
+  code?: string;
+  name?: string;
+}): string {
+  const bruikbaar = (fout.message ?? "").trim();
+  const delen = [
+    fout.status ? `HTTP ${fout.status}` : null,
+    fout.code || null,
+    bruikbaar && bruikbaar !== "{}" ? bruikbaar : null,
+  ].filter(Boolean);
+
+  if (delen.length > 0) return delen.join(" — ");
+  return fout.name || "Supabase gaf geen toelichting";
+}
+
 /** Het adres waarop dit portaal draait, zoals de browser het net opvroeg. */
 async function portaalAdres(): Promise<string> {
   const kop = await headers();
@@ -217,7 +240,14 @@ export async function nodigMedewerkerUit(
 
     return {
       gelukt: false,
-      melding: `De uitnodiging kon niet worden verstuurd. (${error.message}) Controleer in Supabase of het adres van dit portaal bij Authentication → URL Configuration staat, en of er een afzender voor e-mail is ingesteld.`,
+      melding:
+        `De uitnodiging kon niet worden verstuurd. [${authFoutTekst(error)}] ` +
+        "Meestal ligt het aan de e-mail: zolang er in Supabase geen eigen " +
+        "afzender is ingesteld, verstuurt Supabase alleen proefberichten — een " +
+        "paar per uur, en vaak alleen naar het adres waarmee je zelf bij " +
+        "Supabase bent aangemeld. Zie PUBLICEREN.md stap 4b. Je kunt het " +
+        "account ook met de hand aanmaken bij Authentication → Users; deze " +
+        "knop koppelt het daarna vanzelf aan dit profiel.",
     };
   }
 
