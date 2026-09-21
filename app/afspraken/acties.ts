@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseISO, subDays } from "date-fns";
 
+import { formatteerDatum, naarIsoDatum } from "@/lib/formatteer";
 import { werkset } from "@/lib/data/werkset";
 import { supabaseServer } from "@/lib/supabase/server";
 import type { Activiteitsoort, Klant } from "@/lib/data/types";
@@ -673,12 +675,48 @@ export async function bewaarContract(
       return { gelukt: true, melding: "Contract bijgewerkt." };
     }
 
+    // Een datum vóór het lopende contract is geen nieuwe afspraak maar een
+    // verbetering: de vorige invoer stond op de verkeerde dag. Er een tweede
+    // contract naast zetten zou betekenen dat het lopende contract eindigt
+    // vóórdat het begint — precies wat de database weigert.
+    if (ingangsdatum < lopend.ingangsdatum) {
+      const inDeWeg = gegevens.contracten
+        .filter((contract) => contract.profielId === profielId)
+        .filter((contract) => contract.id !== lopend.id)
+        .find(
+          (contract) =>
+            (contract.einddatum ?? contract.ingangsdatum) >= ingangsdatum,
+        );
+
+      if (inDeWeg) {
+        return fout(
+          `Er staat al een contract dat op ${formatteerDatum(inDeWeg.ingangsdatum)} ingaat of nog loopt. Kies een ingangsdatum daarna, of pas eerst dat contract aan.`,
+        );
+      }
+
+      const { error } = await supabase
+        .from("contracten")
+        .update({
+          ingangsdatum,
+          uren_per_week: urenPerWeek,
+          ...normVeld,
+          gewijzigd_op: new Date().toISOString(),
+        })
+        .eq("id", lopend.id);
+
+      if (error) return fout("Het contract kon niet worden bijgewerkt.", error);
+      ververs();
+      return {
+        gelukt: true,
+        melding: `Contract aangepast: gaat nu in op ${formatteerDatum(ingangsdatum)}.`,
+      };
+    }
+
     // Het vorige contract loopt tot de dag vóór de nieuwe ingangsdatum.
-    const dagErvoor = new Date(ingangsdatum);
-    dagErvoor.setDate(dagErvoor.getDate() - 1);
+    const dagErvoor = naarIsoDatum(subDays(parseISO(ingangsdatum), 1));
     const { error } = await supabase
       .from("contracten")
-      .update({ einddatum: dagErvoor.toISOString().slice(0, 10) })
+      .update({ einddatum: dagErvoor })
       .eq("id", lopend.id);
     if (error) {
       return fout("Het vorige contract kon niet worden afgesloten.", error);
