@@ -2,9 +2,13 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Pencil, Plus, X } from "lucide-react";
+import { Check, Copy, Link2, Mail, Pencil, Plus, X } from "lucide-react";
 
-import { bewaarMedewerker, nodigMedewerkerUit } from "@/app/beheer/acties";
+import {
+  bewaarMedewerker,
+  maakToegangslink,
+  nodigMedewerkerUit,
+} from "@/app/beheer/acties";
 import { ContractFormulier } from "@/components/beheer/contract-formulier";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +63,8 @@ export function MedewerkersBeheer({
   const [melding, setMelding] = React.useState<string | null>(null);
   const [fouten, setFouten] = React.useState<Record<string, string>>({});
   const [uitnodigen, setUitnodigen] = React.useState<string | null>(null);
+  const [toegangslink, setToegangslink] = React.useState<string | null>(null);
+  const [gekopieerd, setGekopieerd] = React.useState(false);
 
   // De datumvelden zijn eigen componenten en geen <input type="date">, dus hun
   // waarde gaat niet vanzelf met het formulier mee.
@@ -120,10 +126,35 @@ export function MedewerkersBeheer({
   async function nodigUit(profielId: string) {
     setUitnodigen(profielId);
     setMelding(null);
+    setToegangslink(null);
     const resultaat = await nodigMedewerkerUit(profielId);
     setUitnodigen(null);
     setMelding(resultaat.melding ?? null);
     if (resultaat.gelukt) router.refresh();
+  }
+
+  async function maakLink(profielId: string) {
+    setUitnodigen(profielId);
+    setMelding(null);
+    setToegangslink(null);
+    setGekopieerd(false);
+    const resultaat = await maakToegangslink(profielId);
+    setUitnodigen(null);
+    setMelding(resultaat.melding ?? null);
+    setToegangslink(resultaat.link ?? null);
+    if (resultaat.gelukt) router.refresh();
+  }
+
+  async function kopieer() {
+    if (!toegangslink) return;
+    try {
+      await navigator.clipboard.writeText(toegangslink);
+      setGekopieerd(true);
+    } catch {
+      // Sommige browsers staan kopiëren alleen toe na een echte klik op een
+      // beveiligde verbinding. Lukt het niet, dan blijft de link selecteerbaar.
+      setGekopieerd(false);
+    }
   }
 
   const gekozen = bewerken;
@@ -173,20 +204,38 @@ export function MedewerkersBeheer({
                 {contract ? formatteerUren(contract.urenPerWeek) : "—"}
               </TableCell>
               <TableCell>
-                {profiel.heeftAccount ? (
-                  <span className="text-sm text-merk-hardgroen">ja</span>
-                ) : (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {profiel.heeftAccount ? (
+                    <span className="text-sm text-merk-hardgroen">ja</span>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={uitnodigen === profiel.id}
+                      onClick={() => nodigUit(profiel.id)}
+                    >
+                      <Mail aria-hidden />
+                      {uitnodigen === profiel.id ? "Bezig…" : "Mail"}
+                    </Button>
+                  )}
+
                   <Button
                     type="button"
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     disabled={uitnodigen === profiel.id}
-                    onClick={() => nodigUit(profiel.id)}
+                    onClick={() => maakLink(profiel.id)}
+                    title={
+                      profiel.heeftAccount
+                        ? "Een link om een nieuw wachtwoord in te stellen"
+                        : "Een link om een wachtwoord in te stellen, zonder e-mail"
+                    }
                   >
-                    <Mail aria-hidden />
-                    {uitnodigen === profiel.id ? "Bezig…" : "Uitnodigen"}
+                    <Link2 aria-hidden />
+                    Link
                   </Button>
-                )}
+                </div>
               </TableCell>
               <TableCell>
                 <Button
@@ -411,6 +460,33 @@ export function MedewerkersBeheer({
           <p className="mt-3 text-sm text-muted-foreground" role="status">
             {melding}
           </p>
+        ) : null}
+
+        {toegangslink ? (
+          <div className="mt-3 grid gap-2 rounded-md border border-merk-felgroen/40 bg-merk-felgroen/5 p-3">
+            <p className="text-sm font-medium">
+              Stuur deze link naar de medewerker
+            </p>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={toegangslink}
+                onFocus={(gebeurtenis) => gebeurtenis.currentTarget.select()}
+                className="font-mono text-xs"
+                aria-label="Eenmalige link"
+              />
+              <Button type="button" variant="outline" onClick={kopieer}>
+                {gekopieerd ? <Check aria-hidden /> : <Copy aria-hidden />}
+                {gekopieerd ? "Gekopieerd" : "Kopieer"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Met deze link stelt de medewerker zelf een wachtwoord in. Hij werkt
+              één keer en is beperkt houdbaar. Stuur hem persoonlijk door — wie
+              de link heeft, komt in het account. Zodra je dit scherm verlaat, is
+              hij hier niet meer terug te halen; maak dan een nieuwe.
+            </p>
+          </div>
         ) : null}
       </div>
     </div>

@@ -23,6 +23,8 @@ export interface BeheerResultaat {
   melding?: string;
   velden?: Record<string, string>;
   id?: string;
+  /** Eenmalige link om een wachtwoord in te stellen; zie `maakToegangslink`. */
+  link?: string;
 }
 
 function ververs() {
@@ -288,4 +290,83 @@ async function koppelBestaandAccount(
 
   ververs();
   return true;
+}
+
+/**
+ * Een eenmalige link waarmee een medewerker een wachtwoord instelt.
+ *
+ * Hetzelfde doel als `nodigMedewerkerUit`, maar zonder e-mail: Supabase maakt
+ * de link en geeft hem terug, in plaats van hem te versturen. De beheerder
+ * stuurt hem dan zelf door. Dat is de uitweg als er nog geen eigen afzender is
+ * ingesteld — de proefvoorziening van Supabase stuurt maar een paar berichten
+ * per uur en vaak alleen naar je eigen adres.
+ *
+ * Heeft de medewerker nog geen account, dan maakt Supabase dat meteen aan en is
+ * het een uitnodiging. Bestaat het al, dan is het een herstellink.
+ *
+ * De link geeft toegang tot het account. Hij komt daarom alleen op het scherm
+ * van de beheerder, en nergens in een logregel.
+ */
+export async function maakToegangslink(
+  profielId: string,
+): Promise<BeheerResultaat> {
+  const gegevens = await werkset();
+
+  if (gegevens.ik.rol !== "beheerder") {
+    return { gelukt: false, melding: "Alleen de beheerder kan dit." };
+  }
+
+  const profiel = gegevens.profielen.find((regel) => regel.id === profielId);
+
+  if (!profiel) {
+    return {
+      gelukt: false,
+      melding: "Deze medewerker staat niet in het portaal.",
+    };
+  }
+
+  const beheer = supabaseBeheer();
+
+  if (!beheer) {
+    return {
+      gelukt: false,
+      melding:
+        "Hiervoor is de geheime sleutel nodig (SUPABASE_SERVICE_ROLE_KEY). Zie PUBLICEREN.md stap 4b.",
+    };
+  }
+
+  const { data, error } = await beheer.auth.admin.generateLink({
+    type: profiel.heeftAccount ? "recovery" : "invite",
+    email: profiel.email,
+    options: { redirectTo: `${await portaalAdres()}/instellen` },
+  });
+
+  if (error) {
+    return {
+      gelukt: false,
+      melding: `De link kon niet worden gemaakt. [${authFoutTekst(error)}]`,
+    };
+  }
+
+  const link = data.properties?.action_link;
+
+  if (!link) {
+    return {
+      gelukt: false,
+      melding: "Supabase gaf geen link terug.",
+    };
+  }
+
+  // Bestond het account nog niet, dan is het zojuist aangemaakt en heeft de
+  // trigger het aan dit profiel gekoppeld. Even verversen, anders blijft er
+  // "nog geen inlog" staan.
+  ververs();
+
+  return {
+    gelukt: true,
+    link,
+    melding: profiel.heeftAccount
+      ? `Herstellink gemaakt voor ${profiel.email}.`
+      : `Uitnodigingslink gemaakt voor ${profiel.email}.`,
+  };
 }
