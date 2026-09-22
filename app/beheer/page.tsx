@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import {
   haalAlleActiviteitsoorten,
   haalContract,
+  haalContracten,
   haalInstellingen,
   haalNietInzetbareDagen,
   haalProfielen,
@@ -78,6 +79,7 @@ export default async function BeheerPagina() {
     profielen.map(async (profiel) => ({
       profiel,
       contract: await haalContract(profiel.id, vandaag),
+      contracten: await haalContracten(profiel.id),
     })),
   );
 

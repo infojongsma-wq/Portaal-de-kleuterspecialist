@@ -337,6 +337,21 @@ export async function haalContract(
   return contractOp(await werkset(), medewerkerId, datum);
 }
 
+/**
+ * Alle contracten van een medewerker, nieuwste eerst.
+ *
+ * `haalContract` geeft alleen het contract dat op een bepaalde dag geldt. Voor
+ * het beheerscherm is dat te weinig: een contract dat volgende maand ingaat of
+ * een verkeerd ingevoerde regel moet je ook kunnen zien.
+ */
+export async function haalContracten(
+  medewerkerId: string,
+): Promise<Contract[]> {
+  return (await werkset()).contracten
+    .filter((contract) => contract.profielId === medewerkerId)
+    .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum));
+}
+
 /** Alle uren van een medewerker in een periode, per telwijze. */
 export async function urenInPeriode(
   medewerkerId: string,

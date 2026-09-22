@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Copy, Link2, Mail, Pencil, Plus, X } from "lucide-react";
+import { Check, Copy, Link2, Mail, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { bewaarContract } from "@/app/afspraken/acties";
 import {
   bewaarMedewerker,
   maakToegangslink,
   nodigMedewerkerUit,
+  verwijderContract,
 } from "@/app/beheer/acties";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,10 @@ import type { Contract, Profiel } from "@/lib/data/types";
 
 export interface MedewerkerRegel {
   profiel: Profiel;
+  /** Het contract dat vandaag geldt; `null` als er vandaag geen loopt. */
   contract: Contract | null;
+  /** Alle contracten, nieuwste eerst — ook die nog moeten ingaan. */
+  contracten: Contract[];
 }
 
 /**
@@ -94,9 +98,12 @@ export function MedewerkersBeheer({
   }
 
   function openBewerken(profiel: Profiel) {
-    const contract =
-      medewerkers.find((regel) => regel.profiel.id === profiel.id)?.contract ??
-      null;
+    const regel = medewerkers.find(
+      (medewerker) => medewerker.profiel.id === profiel.id,
+    );
+    // Het nieuwste contract, ook als dat pas volgende maand ingaat. Anders
+    // toont het formulier een oudere regel en lijkt een wijziging verdwenen.
+    const contract = regel?.contracten[0] ?? regel?.contract ?? null;
 
     setNieuw(false);
     setBewerken(profiel);
@@ -217,7 +224,21 @@ export function MedewerkersBeheer({
     }
   }
 
+  async function haalContractWeg(contractId: string) {
+    setBezig(true);
+    const resultaat = await verwijderContract(contractId);
+    setBezig(false);
+    setMelding(resultaat.melding ?? null);
+    if (resultaat.gelukt) {
+      sluit();
+      router.refresh();
+    }
+  }
+
   const gekozen = bewerken;
+  const gekozenContracten =
+    medewerkers.find((regel) => regel.profiel.id === gekozen?.id)?.contracten ??
+    [];
   const urenGetal = uren.trim() === "" ? 0 : leesGetal(uren);
   const normGetal = norm.trim() === "" ? 0 : leesGetal(norm);
 
@@ -525,6 +546,51 @@ export function MedewerkersBeheer({
                   ingangsdatum — het lopende contract wordt dan afgesloten en
                   eerdere jaren blijven kloppen.
                 </p>
+
+                {gekozenContracten.length > 0 ? (
+                  <div className="sm:col-span-3">
+                    <p className="mb-1 text-xs font-medium">
+                      Vastgelegde contracten
+                    </p>
+                    <ul className="grid gap-1">
+                      {gekozenContracten.map((contract) => (
+                        <li
+                          key={contract.id}
+                          className="flex items-center justify-between gap-3 rounded border px-2 py-1 text-xs"
+                        >
+                          <span className="tabular-nums">
+                            {formatteerUren(contract.urenPerWeek)} uur per week
+                            vanaf {formatteerDatum(contract.ingangsdatum)}
+                            {contract.einddatum
+                              ? ` tot en met ${formatteerDatum(contract.einddatum)}`
+                              : ""}
+                            {" · norm "}
+                            {formatteerUren(contract.normFulltime)} uur
+                            {inDienst && contract.ingangsdatum < inDienst
+                              ? " — begint vóór de indiensttreding"
+                              : ""}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={bezig}
+                            aria-label={`Contract vanaf ${formatteerDatum(contract.ingangsdatum)} weghalen`}
+                            onClick={() => haalContractWeg(contract.id)}
+                          >
+                            <Trash2 aria-hidden />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Staat er een regel bij die nergens op slaat — bijvoorbeeld
+                      met de datum van de dag waarop je hem per ongeluk
+                      vastlegde — haal die dan weg. De geboekte uren blijven
+                      staan; een contract bepaalt alleen de norm.
+                    </p>
+                  </div>
+                ) : null}
               </fieldset>
 
               <div className="flex gap-2">

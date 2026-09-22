@@ -370,3 +370,40 @@ export async function maakToegangslink(
       : `Uitnodigingslink gemaakt voor ${profiel.email}.`,
   };
 }
+
+/**
+ * Een contractregel weghalen.
+ *
+ * Nodig om een vergissing te herstellen: de eerste keer opslaan zet de
+ * ingangsdatum op vandaag, en wie die datum daarna niet meer aanpast houdt een
+ * regel over die nergens op slaat. De uren die eraan hangen blijven gewoon
+ * staan — een contract bepaalt alleen de norm, niet de geboekte uren.
+ */
+export async function verwijderContract(
+  contractId: string,
+): Promise<BeheerResultaat> {
+  const gegevens = await werkset();
+
+  if (gegevens.ik.rol !== "beheerder") {
+    return {
+      gelukt: false,
+      melding: "Alleen de beheerder kan een contract weghalen.",
+    };
+  }
+
+  const supabase = await supabaseServer();
+  const { error } = await supabase
+    .from("contracten")
+    .delete()
+    .eq("id", contractId);
+
+  if (error) {
+    return {
+      gelukt: false,
+      melding: `Het contract kon niet worden weggehaald. (${error.message})`,
+    };
+  }
+
+  ververs();
+  return { gelukt: true, melding: "Contract weggehaald." };
+}
