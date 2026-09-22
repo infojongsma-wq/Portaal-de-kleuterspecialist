@@ -48,6 +48,13 @@ export interface JaarnormInvoer {
   /** Bepaalt de berekening naar rato in het eerste jaar. */
   inDienstVanaf?: string | null;
   uitDienstPer?: string | null;
+  /**
+   * Begin en einde van het contract. Begrenzen de periode net zo goed als het
+   * dienstverband: een contract dat pas in oktober ingaat, verantwoordt over
+   * dat jaar alleen die laatste maanden.
+   */
+  contractVanaf?: string | null;
+  contractTot?: string | null;
   /** Uren met status `voltooid` plus alle handmatige urenregels. */
   gerealiseerdeUren: number;
   /** Uren met status `gepland` of `voltooid`, ook toekomstige. */
@@ -84,13 +91,15 @@ export function berekenJaarnorm(invoer: JaarnormInvoer): JaarnormUitkomst {
   const jaarStart = `${invoer.jaar}-01-01`;
   const jaarEind = `${invoer.jaar}-12-31`;
 
-  // De periode dat de medewerker dit jaar in dienst is.
-  const periodeStart = invoer.inDienstVanaf
-    ? laatste(jaarStart, invoer.inDienstVanaf)
-    : jaarStart;
-  const periodeEind = invoer.uitDienstPer
-    ? eerste(jaarEind, invoer.uitDienstPer)
-    : jaarEind;
+  // De periode dat de medewerker dit jaar in dienst is, binnen de looptijd van
+  // het contract. De laatste startdatum en de eerste einddatum winnen.
+  let periodeStart = jaarStart;
+  if (invoer.inDienstVanaf) periodeStart = laatste(periodeStart, invoer.inDienstVanaf);
+  if (invoer.contractVanaf) periodeStart = laatste(periodeStart, invoer.contractVanaf);
+
+  let periodeEind = jaarEind;
+  if (invoer.uitDienstPer) periodeEind = eerste(periodeEind, invoer.uitDienstPer);
+  if (invoer.contractTot) periodeEind = eerste(periodeEind, invoer.contractTot);
 
   const dagenJaar = kalenderdagen(jaarStart, jaarEind);
   const dagenPeriode = kalenderdagen(periodeStart, periodeEind);

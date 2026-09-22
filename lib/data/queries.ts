@@ -539,7 +539,48 @@ export async function urenPerCategorie(
     .sort((a, b) => b.uren - a.uren);
 }
 
-/** De jaarnormbalans van een medewerker (SPEC.md 5.4). */
+/**
+ * Het contract waarmee een heel jaar wordt verantwoord.
+ *
+ * Niet "het contract van vandaag": een contract dat op 1 oktober ingaat hoort
+ * het jaar te bepalen zodra het is vastgelegd, ook als dat in september wordt
+ * bekeken. Geldt er vandaag een contract dat binnen dit jaar valt, dan telt
+ * dat; anders het contract dat het verst in het jaar ingaat.
+ */
+function contractVanJaar(
+  gegevens: Werkset,
+  medewerkerId: string,
+  jaar: number,
+  peildatum: string,
+): Contract | null {
+  const jaarStart = `${jaar}-01-01`;
+  const jaarEind = `${jaar}-12-31`;
+
+  const overlappend = gegevens.contracten
+    .filter((contract) => contract.profielId === medewerkerId)
+    .filter((contract) => contract.ingangsdatum <= jaarEind)
+    .filter((contract) => !contract.einddatum || contract.einddatum >= jaarStart)
+    .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum));
+
+  const vandaagGeldig = overlappend.find(
+    (contract) =>
+      contract.ingangsdatum <= peildatum &&
+      (!contract.einddatum || contract.einddatum >= peildatum),
+  );
+
+  return vandaagGeldig ?? overlappend[0] ?? null;
+}
+
+/** Het contract waarmee een jaar wordt verantwoord, voor de schermen. */
+export async function haalContractVanJaar(
+  medewerkerId: string,
+  jaar: number,
+  peildatum: string,
+): Promise<Contract | null> {
+  return contractVanJaar(await werkset(), medewerkerId, jaar, peildatum);
+}
+
+/** De stand ten opzichte van de jaarurennorm. */
 export async function jaarnormBalans(
   medewerkerId: string,
   jaar: number,
@@ -547,7 +588,7 @@ export async function jaarnormBalans(
 ): Promise<JaarnormUitkomst | null> {
   const gegevens = await werkset();
   const profiel = gegevens.profielen.find((p) => p.id === medewerkerId);
-  const contract = contractOp(gegevens, medewerkerId, peildatum);
+  const contract = contractVanJaar(gegevens, medewerkerId, jaar, peildatum);
   if (!profiel || !contract) return null;
 
   const jaarStart = `${jaar}-01-01`;
@@ -564,6 +605,10 @@ export async function jaarnormBalans(
     normFulltime: contract.normFulltime,
     inDienstVanaf: profiel.inDienstVanaf,
     uitDienstPer: profiel.uitDienstPer,
+    // Het contract telt ook als begrenzing: gaat het pas in oktober in, dan
+    // wordt er over dit jaar niet meer verantwoord dan die laatste maanden.
+    contractVanaf: contract.ingangsdatum,
+    contractTot: contract.einddatum,
     gerealiseerdeUren,
     geplandeUren,
   });

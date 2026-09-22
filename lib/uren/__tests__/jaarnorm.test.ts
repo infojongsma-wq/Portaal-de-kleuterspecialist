@@ -158,3 +158,44 @@ describe("gerealiseerd en gepland", () => {
     expect(uitkomst.nogTeGaan).toBe(874.9);
   });
 });
+
+describe("het contract begrenst de periode net zo goed", () => {
+  const basis = {
+    jaar: 2026,
+    urenPerWeek: 24,
+    normFulltime: NORM_FULLTIME,
+    gerealiseerdeUren: 0,
+    geplandeUren: 0,
+  };
+
+  it("rekent vanaf de ingangsdatum van het contract", () => {
+    // 1 oktober tot en met 31 december 2026: 92 van de 365 dagen.
+    const uitkomst = berekenJaarnorm({
+      ...basis,
+      inDienstVanaf: "2026-10-01",
+      contractVanaf: "2026-10-01",
+    });
+    expect(uitkomst.periodeStart).toBe("2026-10-01");
+    expect(uitkomst.dagenPeriode).toBe(92);
+    expect(uitkomst.normPeriode).toBe(250.9);
+  });
+
+  it("neemt de laatste van de twee startdatums", () => {
+    const uitkomst = berekenJaarnorm({
+      ...basis,
+      inDienstVanaf: "2026-08-01",
+      contractVanaf: "2026-10-01",
+    });
+    expect(uitkomst.periodeStart).toBe("2026-10-01");
+  });
+
+  it("kort ook in op de einddatum van het contract", () => {
+    const uitkomst = berekenJaarnorm({
+      ...basis,
+      contractVanaf: "2026-01-01",
+      contractTot: "2026-06-30",
+    });
+    expect(uitkomst.periodeEind).toBe("2026-06-30");
+    expect(uitkomst.dagenPeriode).toBe(181);
+  });
+});

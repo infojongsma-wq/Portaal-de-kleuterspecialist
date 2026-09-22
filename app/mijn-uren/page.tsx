@@ -5,7 +5,7 @@ import { UrenregelFormulier } from "@/components/uren/urenregel-formulier";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  haalContract,
+  haalContractVanJaar,
   huidigeMedewerker,
   jaarnormBalans,
   urenregelsInPeriode,
@@ -33,7 +33,7 @@ export default async function MijnUrenPagina() {
 
   const [balans, contract, urenregels] = await Promise.all([
     jaarnormBalans(medewerker.id, jaar, vandaag),
-    haalContract(medewerker.id, vandaag),
+    haalContractVanJaar(medewerker.id, jaar, vandaag),
     urenregelsInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
   ]);
 

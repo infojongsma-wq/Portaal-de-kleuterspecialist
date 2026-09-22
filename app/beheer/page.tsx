@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import {
   haalAlleActiviteitsoorten,
   haalContract,
+  haalContractVanJaar,
   haalContracten,
   haalInstellingen,
   haalNietInzetbareDagen,
@@ -65,7 +66,7 @@ export default async function BeheerPagina() {
       .map(async (medewerker) => ({
         profiel: medewerker,
         balans: await jaarnormBalans(medewerker.id, jaar, vandaag),
-        contract: await haalContract(medewerker.id, vandaag),
+        contract: await haalContractVanJaar(medewerker.id, jaar, vandaag),
         categorieen: await urenPerCategorie(
           medewerker.id,
           jaarStart,
