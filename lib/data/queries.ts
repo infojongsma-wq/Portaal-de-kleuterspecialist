@@ -547,10 +547,8 @@ export async function jaarnormBalans(
     jaar,
     urenPerWeek: contract.urenPerWeek,
     normFulltime: contract.normFulltime,
-    nietInzetbareDatums: gegevens.nietInzetbareDagen.map((dag) => dag.datum),
     inDienstVanaf: profiel.inDienstVanaf,
     uitDienstPer: profiel.uitDienstPer,
-    peildatum,
     gerealiseerdeUren,
     geplandeUren,
   });

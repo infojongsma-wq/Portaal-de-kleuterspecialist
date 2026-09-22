@@ -1,10 +1,4 @@
-import {
-  endOfMonth,
-  endOfWeek,
-  startOfMonth,
-  startOfWeek,
-} from "date-fns";
-import { AlertTriangle } from "lucide-react";
+import { endOfMonth, startOfMonth } from "date-fns";
 
 import { Pagina } from "@/components/pagina";
 import { UrenregelFormulier } from "@/components/uren/urenregel-formulier";
@@ -14,60 +8,38 @@ import {
   haalContract,
   huidigeMedewerker,
   jaarnormBalans,
-  urenInPeriode,
   urenregelsInPeriode,
 } from "@/lib/data/queries";
 import {
   formatteerUren,
   formatteerUrenKlok,
   naarIsoDatum,
-  weeknummer,
 } from "@/lib/formatteer";
 
 export const metadata = { title: "Mijn uren · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
 
-/** Eigen uren per week, maand en jaar (SPEC.md 6.5). */
+/** Eigen uren en de stand ten opzichte van de jaarnorm (SPEC.md 6.5). */
 export default async function MijnUrenPagina() {
   const medewerker = await huidigeMedewerker();
   const nu = new Date();
   const vandaag = naarIsoDatum(nu);
   const jaar = nu.getFullYear();
 
-  const weekStart = naarIsoDatum(startOfWeek(nu, { weekStartsOn: 1 }));
-  const weekEind = naarIsoDatum(endOfWeek(nu, { weekStartsOn: 1 }));
+  // De maand bepaalt alleen welke urenregels je onderaan kunt bijwerken; de
+  // verantwoording zelf gaat per jaar.
   const maandStart = naarIsoDatum(startOfMonth(nu));
   const maandEind = naarIsoDatum(endOfMonth(nu));
 
-  const [
-    balans,
-    contract,
-    weekGerealiseerd,
-    weekGepland,
-    maandGerealiseerd,
-    maandGepland,
-    urenregels,
-  ] = await Promise.all([
+  const [balans, contract, urenregels] = await Promise.all([
     jaarnormBalans(medewerker.id, jaar, vandaag),
     haalContract(medewerker.id, vandaag),
-    urenInPeriode(medewerker.id, weekStart, weekEind, "gerealiseerd"),
-    urenInPeriode(medewerker.id, weekStart, weekEind, "gepland"),
-    urenInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
-    urenInPeriode(medewerker.id, maandStart, maandEind, "gepland"),
     urenregelsInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
   ]);
 
+  // Alleen het jaartotaal: de verantwoording gaat per jaar, niet per week of
+  // maand. De ene week worden er meer uren gemaakt dan de andere.
   const perioden = [
-    {
-      label: `Deze week (week ${weeknummer(vandaag)})`,
-      gerealiseerd: weekGerealiseerd,
-      gepland: weekGepland,
-    },
-    {
-      label: "Deze maand",
-      gerealiseerd: maandGerealiseerd,
-      gepland: maandGepland,
-    },
     {
       label: `Dit jaar (${jaar})`,
       gerealiseerd: balans?.gerealiseerdeUren ?? 0,
@@ -80,12 +52,12 @@ export default async function MijnUrenPagina() {
       titel="Mijn uren"
       omschrijving={
         contract
-          ? `Contract: ${formatteerUren(contract.urenPerWeek)} uur per week · werktijdfactor ${formatteerUren(balans?.werktijdfactor ?? 0)}`
+          ? `Contract: ${formatteerUren(contract.urenPerWeek)} uur per week · deeltijdfactor ${formatteerUren(balans?.werktijdfactor ?? 0)}`
           : "Er is nog geen contract vastgelegd."
       }
     >
       <div className="grid gap-5">
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid gap-5 sm:max-w-xs">
           {perioden.map((periode) => (
             <Card key={periode.label}>
               <CardHeader>
@@ -116,63 +88,36 @@ export default async function MijnUrenPagina() {
             <CardContent className="grid gap-5">
               <Voortgangsbalk
                 gerealiseerd={balans.gerealiseerdeUren}
-                verwacht={balans.verwachteUren}
                 norm={balans.normPeriode}
               />
 
               <dl className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm md:grid-cols-4">
                 <Kerngetal
-                  label="Persoonlijke jaarnorm"
-                  waarde={`${formatteerUren(balans.persoonlijkeJaarnorm)} uur`}
-                />
-                <Kerngetal
-                  label="Norm over je periode"
+                  label={`Jaarnorm ${jaar}`}
                   waarde={`${formatteerUren(balans.normPeriode)} uur`}
                 />
                 <Kerngetal
-                  label="Verwacht tot vandaag"
-                  waarde={`${formatteerUren(balans.verwachteUren)} uur`}
+                  label="Gerealiseerd"
+                  waarde={`${formatteerUren(balans.gerealiseerdeUren)} uur`}
                 />
                 <Kerngetal
-                  label="Saldo"
-                  waarde={`${balans.saldo >= 0 ? "+" : "−"}${formatteerUren(Math.abs(balans.saldo))} uur`}
-                  nadruk={balans.saldo >= 0 ? "goed" : "let-op"}
+                  label={balans.nogTeGaan >= 0 ? "Nog te gaan" : "Boven de norm"}
+                  waarde={`${formatteerUren(Math.abs(balans.nogTeGaan))} uur`}
+                  nadruk={balans.nogTeGaan >= 0 ? undefined : "goed"}
                 />
                 <Kerngetal
-                  label="Inzetbare dagen dit jaar"
-                  waarde={String(balans.inzetbareDagenJaar)}
-                />
-                <Kerngetal
-                  label="Daarvan verstreken"
-                  waarde={String(balans.inzetbareDagenVerstreken)}
-                />
-                <Kerngetal
-                  label="Verstreken deel"
-                  waarde={`${Math.round(balans.verstrekenDeelPeriode * 100)}%`}
-                />
-                <Kerngetal
-                  label="Werktijdfactor"
+                  label="Deeltijdfactor"
                   waarde={formatteerUren(balans.werktijdfactor)}
                 />
               </dl>
 
-              {balans.vakantiegegevensOnvolledig ? (
-                <p className="flex items-start gap-2 rounded-md bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-                  <span>
-                    Er zijn {balans.inzetbareDagenJaar} inzetbare dagen berekend,
-                    terwijl er ongeveer 207 worden verwacht bij een volledig jaar.
-                    De schoolvakanties en feestdagen zijn waarschijnlijk niet
-                    compleet ingevoerd — kijk bij Beheer › Niet-inzetbare dagen.
-                  </span>
-                </p>
-              ) : null}
-
               <p className="text-xs text-muted-foreground">
-                De norm wordt uitgesmeerd over inzetbare dagen en niet over
-                kalenderweken. De normlijn staat daardoor stil tijdens
-                schoolvakanties. Alleen voltooide afspraken en handmatige
-                urenregels tellen mee als gerealiseerd.
+                {balans.dagenPeriode < balans.dagenJaar
+                  ? `De norm is naar rato berekend over ${balans.dagenPeriode} van de ${balans.dagenJaar} dagen van dit jaar. `
+                  : ""}
+                Het gaat om het totaal over het hele jaar; de ene week maak je
+                meer uren dan de andere. Alleen voltooide afspraken en
+                handmatige urenregels tellen mee als gerealiseerd.
               </p>
             </CardContent>
           </Card>

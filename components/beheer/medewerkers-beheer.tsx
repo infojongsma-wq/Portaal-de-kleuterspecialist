@@ -4,12 +4,12 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Link2, Mail, Pencil, Plus, X } from "lucide-react";
 
+import { bewaarContract } from "@/app/afspraken/acties";
 import {
   bewaarMedewerker,
   maakToegangslink,
   nodigMedewerkerUit,
 } from "@/app/beheer/acties";
-import { ContractFormulier } from "@/components/beheer/contract-formulier";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,7 +25,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatteerDatum, formatteerUren } from "@/lib/formatteer";
+import { formatteerDatum, formatteerUren, leesGetal } from "@/lib/formatteer";
+import { FULLTIME_UREN_PER_WEEK } from "@/lib/uren";
 import type { Contract, Profiel } from "@/lib/data/types";
 
 export interface MedewerkerRegel {
@@ -71,6 +72,12 @@ export function MedewerkersBeheer({
   const [inDienst, setInDienst] = React.useState("");
   const [uitDienst, setUitDienst] = React.useState("");
 
+  // Het contract hoort bij dezelfde medewerker en wordt met dezelfde knop
+  // bewaard, maar het is een eigen tabel met een eigen ingangsdatum.
+  const [uren, setUren] = React.useState("");
+  const [contractDatum, setContractDatum] = React.useState("");
+  const [norm, setNorm] = React.useState("");
+
   const formulierOpen = nieuw || bewerken !== null;
 
   function openNieuw() {
@@ -78,17 +85,35 @@ export function MedewerkersBeheer({
     setNieuw(true);
     setFouten({});
     setMelding(null);
+    setToegangslink(null);
     setInDienst("");
     setUitDienst("");
+    setUren("");
+    setContractDatum(vandaag);
+    setNorm(normFulltime != null ? String(normFulltime) : "");
   }
 
   function openBewerken(profiel: Profiel) {
+    const contract =
+      medewerkers.find((regel) => regel.profiel.id === profiel.id)?.contract ??
+      null;
+
     setNieuw(false);
     setBewerken(profiel);
     setFouten({});
     setMelding(null);
+    setToegangslink(null);
     setInDienst(profiel.inDienstVanaf ?? "");
     setUitDienst(profiel.uitDienstPer ?? "");
+    setUren(contract ? String(contract.urenPerWeek) : "");
+    setContractDatum(contract?.ingangsdatum ?? vandaag);
+    setNorm(
+      contract
+        ? String(contract.normFulltime)
+        : normFulltime != null
+          ? String(normFulltime)
+          : "",
+    );
   }
 
   function sluit() {
@@ -97,8 +122,14 @@ export function MedewerkersBeheer({
     setFouten({});
   }
 
+  /**
+   * Eén knop bewaart álles van deze medewerker: de gegevens én het contract.
+   * Daarvóór had het contract een eigen knop onderaan het paneel, en wie op
+   * Opslaan drukte zag de contracturen niet bewaard worden.
+   */
   async function bewaar(formulier: FormData) {
     setBezig(true);
+
     const resultaat = await bewaarMedewerker({
       id: bewerken?.id,
       voornaam: String(formulier.get("voornaam") ?? ""),
@@ -113,14 +144,43 @@ export function MedewerkersBeheer({
       uitDienstPer: uitDienst,
       actief: formulier.get("actief") === "on",
     });
-    setBezig(false);
-    setMelding(resultaat.melding ?? null);
-    setFouten(resultaat.velden ?? {});
 
-    if (resultaat.gelukt) {
-      sluit();
-      router.refresh();
+    if (!resultaat.gelukt) {
+      setBezig(false);
+      setMelding(resultaat.melding ?? null);
+      setFouten(resultaat.velden ?? {});
+      return;
     }
+
+    // Het profiel moet er eerst zijn: een nieuw contract heeft een profiel-id
+    // nodig. Bij een nieuwe medewerker komt dat pas uit de vorige stap.
+    const profielId = bewerken?.id ?? resultaat.id;
+    const urenIngevuld = uren.trim();
+    let melding = resultaat.melding ?? null;
+
+    if (profielId && urenIngevuld !== "" && contractDatum !== "") {
+      const contractResultaat = await bewaarContract(
+        profielId,
+        leesGetal(urenIngevuld),
+        contractDatum,
+        norm.trim() === "" ? null : leesGetal(norm),
+      );
+      melding = contractResultaat.gelukt
+        ? `${melding ? `${melding} ` : ""}${contractResultaat.melding ?? ""}`.trim()
+        : (contractResultaat.melding ?? null);
+
+      if (!contractResultaat.gelukt) {
+        setBezig(false);
+        setMelding(melding);
+        return;
+      }
+    }
+
+    setBezig(false);
+    setMelding(melding);
+    setFouten({});
+    sluit();
+    router.refresh();
   }
 
   async function nodigUit(profielId: string) {
@@ -158,9 +218,8 @@ export function MedewerkersBeheer({
   }
 
   const gekozen = bewerken;
-  const gekozenContract =
-    medewerkers.find((regel) => regel.profiel.id === gekozen?.id)?.contract ??
-    null;
+  const urenGetal = uren.trim() === "" ? 0 : leesGetal(uren);
+  const normGetal = norm.trim() === "" ? 0 : leesGetal(norm);
 
   return (
     <div className="grid gap-4">
@@ -419,6 +478,55 @@ export function MedewerkersBeheer({
                 </p>
               ) : null}
 
+              <fieldset className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
+                <legend className="px-1 text-xs text-muted-foreground">
+                  Contract
+                </legend>
+
+                <Veld label="Uren per week" naam="urenPerWeek">
+                  <Input
+                    id="urenPerWeek"
+                    type="number"
+                    step="0.5"
+                    min={0.5}
+                    max={40}
+                    value={uren}
+                    onChange={(gebeurtenis) => setUren(gebeurtenis.target.value)}
+                    placeholder="bijvoorbeeld 24"
+                  />
+                </Veld>
+
+                <Veld label="Ingangsdatum contract" naam="contractDatum">
+                  <Datumveld
+                    id="contractDatum"
+                    waarde={contractDatum}
+                    onWijzig={setContractDatum}
+                  />
+                </Veld>
+
+                <Veld label="Jaarurennorm bij 1,0 fte" naam="normFulltime">
+                  <Input
+                    id="normFulltime"
+                    type="number"
+                    step="1"
+                    min={500}
+                    max={2500}
+                    value={norm}
+                    onChange={(gebeurtenis) => setNorm(gebeurtenis.target.value)}
+                    placeholder="volgens cao"
+                  />
+                </Veld>
+
+                <p className="text-xs text-muted-foreground sm:col-span-3">
+                  {urenGetal > 0 && normGetal > 0
+                    ? `Deeltijdfactor ${formatteerUren(urenGetal / FULLTIME_UREN_PER_WEEK)} · jaarnorm ${formatteerUren((normGetal * urenGetal) / FULLTIME_UREN_PER_WEEK)} uur bij een heel jaar in dienst.`
+                    : "Vul de uren per week en de jaarurennorm in; de deeltijdfactor en de persoonlijke jaarnorm volgen daaruit."}{" "}
+                  Verandert het aantal uren per week, zet dan een nieuwe
+                  ingangsdatum — het lopende contract wordt dan afgesloten en
+                  eerdere jaren blijven kloppen.
+                </p>
+              </fieldset>
+
               <div className="flex gap-2">
                 <Button type="submit" disabled={bezig}>
                   {bezig ? "Bezig…" : "Opslaan"}
@@ -428,26 +536,6 @@ export function MedewerkersBeheer({
                 </Button>
               </div>
             </form>
-
-            {/* Buiten het formulier: het contract wordt apart vastgelegd, met
-                een eigen ingangsdatum, zodat eerdere jaren blijven kloppen. */}
-            {gekozen ? (
-              <div className="border-t pt-4">
-                <h4 className="mb-2 text-sm font-semibold">Contract</h4>
-                <ContractFormulier
-                  profielId={gekozen.id}
-                  urenPerWeek={gekozenContract?.urenPerWeek ?? null}
-                  ingangsdatum={gekozenContract?.ingangsdatum ?? null}
-                  vandaag={vandaag}
-                  normFulltime={gekozenContract?.normFulltime ?? normFulltime}
-                />
-              </div>
-            ) : (
-              <p className="border-t pt-4 text-xs text-muted-foreground">
-                Het contract met de uren per week leg je vast zodra de
-                medewerker is opgeslagen.
-              </p>
-            )}
           </div>
         ) : (
           <Button type="button" variant="outline" onClick={openNieuw}>

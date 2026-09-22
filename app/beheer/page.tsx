@@ -1,7 +1,6 @@
-import { AlertTriangle, Lock } from "lucide-react";
+import { Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
-import { ContractFormulier } from "@/components/beheer/contract-formulier";
 import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
@@ -122,19 +121,10 @@ export default async function BeheerPagina() {
               </CardHeader>
 
               <CardContent className="grid gap-6">
-                <ContractFormulier
-                  profielId={profiel.id}
-                  urenPerWeek={contract?.urenPerWeek ?? null}
-                  ingangsdatum={contract?.ingangsdatum ?? null}
-                  vandaag={vandaag}
-                  normFulltime={contract?.normFulltime ?? normUitContracten}
-                />
-
                 {balans ? (
                   <>
                     <Voortgangsbalk
                       gerealiseerd={balans.gerealiseerdeUren}
-                      verwacht={balans.verwachteUren}
                       norm={balans.normPeriode}
                     />
 
@@ -158,24 +148,25 @@ export default async function BeheerPagina() {
                               </TableCell>
                             </TableRow>
                             <TableRow>
-                              <TableCell>Verwacht tot vandaag</TableCell>
+                              <TableCell>Jaarnorm</TableCell>
                               <TableCell className="text-right tabular-nums">
-                                {formatteerUren(balans.verwachteUren)}
+                                {formatteerUren(balans.normPeriode)}
                               </TableCell>
                             </TableRow>
                             <TableRow>
                               <TableCell className="font-medium">
-                                Saldo
+                                {balans.nogTeGaan >= 0
+                                  ? "Nog te gaan"
+                                  : "Boven de norm"}
                               </TableCell>
                               <TableCell
                                 className={`text-right font-medium tabular-nums ${
-                                  balans.saldo >= 0
-                                    ? "text-merk-hardgroen"
+                                  balans.nogTeGaan >= 0
+                                    ? "text-merk-turquoise"
                                     : "text-amber-600"
                                 }`}
                               >
-                                {balans.saldo >= 0 ? "+" : "−"}
-                                {formatteerUren(Math.abs(balans.saldo))}
+                                {formatteerUren(Math.abs(balans.nogTeGaan))}
                               </TableCell>
                             </TableRow>
                           </TableBody>
@@ -215,27 +206,22 @@ export default async function BeheerPagina() {
                       </div>
                     </div>
 
-                    {balans.vakantiegegevensOnvolledig ? (
-                      <p className="flex items-start gap-2 rounded-md bg-amber-100 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                        <AlertTriangle
-                          className="mt-0.5 size-4 shrink-0"
-                          aria-hidden
-                        />
-                        <span>
-                          {balans.inzetbareDagenJaar} inzetbare dagen berekend,
-                          terwijl er ongeveer 207 worden verwacht. Vul de
-                          schoolvakanties en feestdagen aan. Het aantal uren
-                          hieronder klopt wel; alleen de verdeling over het jaar
-                          niet, en daarmee de regel &quot;verwacht tot
-                          vandaag&quot;.
-                        </span>
+                    {balans.dagenPeriode < balans.dagenJaar ? (
+                      <p className="text-xs text-muted-foreground">
+                        Naar rato: in dienst van{" "}
+                        {formatteerDatum(balans.periodeStart)} tot en met{" "}
+                        {formatteerDatum(balans.periodeEind)} — dat is{" "}
+                        {balans.dagenPeriode} van de {balans.dagenJaar} dagen,
+                        dus {formatteerUren(balans.normPeriode)} van de{" "}
+                        {formatteerUren(balans.persoonlijkeJaarnorm)} uur.
                       </p>
                     ) : null}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    Zonder contract is er geen norm te berekenen. Leg hierboven
-                    de uren per week vast.
+                    Zonder contract is er geen norm te berekenen. Leg de uren
+                    per week vast bij Medewerkers, met het potloodje achter de
+                    regel.
                   </p>
                 )}
               </CardContent>

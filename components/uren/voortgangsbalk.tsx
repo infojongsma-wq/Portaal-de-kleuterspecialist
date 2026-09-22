@@ -2,22 +2,23 @@ import { formatteerUren } from "@/lib/formatteer";
 import { cn } from "@/lib/utils";
 
 /**
- * Voortgang richting de jaarnorm. De normlijn markeert waar je op de peildatum
- * hoort te staan; die staat stil tijdens schoolvakanties (SPEC.md 5.4).
+ * Voortgang richting de jaarnorm, over het hele jaar.
+ *
+ * Bewust zónder markering voor "waar je vandaag hoort te staan": de uren
+ * worden niet gelijkmatig over het jaar gemaakt — de ene week meer dan de
+ * andere — en aan het eind van het jaar telt alleen het totaal.
  */
 export function Voortgangsbalk({
   gerealiseerd,
-  verwacht,
   norm,
 }: {
   gerealiseerd: number;
-  verwacht: number;
   norm: number;
 }) {
-  const schaal = Math.max(norm, gerealiseerd, verwacht, 1);
+  const schaal = Math.max(norm, gerealiseerd, 1);
   const deelGerealiseerd = Math.min(100, (gerealiseerd / schaal) * 100);
-  const deelVerwacht = Math.min(100, (verwacht / schaal) * 100);
-  const voorloopt = gerealiseerd >= verwacht;
+  const eroverheen = gerealiseerd > norm;
+  const percentage = norm > 0 ? Math.round((gerealiseerd / norm) * 100) : 0;
 
   return (
     <div className="grid gap-2">
@@ -25,14 +26,9 @@ export function Voortgangsbalk({
         <div
           className={cn(
             "h-full rounded-full transition-all",
-            voorloopt ? "bg-merk-felgroen" : "bg-amber-500",
+            eroverheen ? "bg-amber-500" : "bg-merk-felgroen",
           )}
           style={{ width: `${deelGerealiseerd}%` }}
-        />
-        <div
-          className="absolute inset-y-0 w-0.5 bg-foreground"
-          style={{ left: `${deelVerwacht}%` }}
-          aria-hidden
         />
       </div>
 
@@ -41,19 +37,13 @@ export function Voortgangsbalk({
           <span
             className={cn(
               "mr-1.5 inline-block size-2 rounded-full align-middle",
-              voorloopt ? "bg-merk-felgroen" : "bg-amber-500",
+              eroverheen ? "bg-amber-500" : "bg-merk-felgroen",
             )}
             aria-hidden
           />
           Gerealiseerd {formatteerUren(gerealiseerd)} uur
         </span>
-        <span>
-          <span
-            className="mr-1.5 inline-block h-2.5 w-0.5 bg-foreground align-middle"
-            aria-hidden
-          />
-          Verwacht op vandaag {formatteerUren(verwacht)} uur
-        </span>
+        <span>{percentage}% van de norm</span>
         <span>Jaarnorm {formatteerUren(norm)} uur</span>
       </div>
     </div>
