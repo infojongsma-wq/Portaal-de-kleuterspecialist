@@ -48,7 +48,17 @@ function uitlegBijFout(fout: { status?: number }): string {
   if (fout.status === undefined || fout.status === 0 || fout.status >= 500) {
     return "Supabase antwoordt op dit moment niet. Open de link over een paar minuten opnieuw.";
   }
-  return "Deze link is verlopen of al een keer gebruikt.";
+  return "Deze link is verlopen of al een keer gebruikt. Is er daarna een nieuwere link gemaakt, dan werkt alleen die nog.";
+}
+
+/** De kale code en status van Supabase, voor wie moet uitzoeken wat er misging. */
+function technisch(fout: { code?: string; status?: number; message?: string }): string {
+  return [fout.code, fout.status, fout.message].filter(Boolean).join(" · ");
+}
+
+interface Verwerking {
+  fout: string | null;
+  detail: string | null;
 }
 
 export function Wachtwoordformulier() {
@@ -59,21 +69,27 @@ export function Wachtwoordformulier() {
   const [melding, setMelding] = React.useState<string | null>(null);
 
   const [uitleg, setUitleg] = React.useState<string | null>(null);
+  const [detail, setDetail] = React.useState<string | null>(null);
+  const [email, setEmail] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const supabase = supabaseBrowser();
     let afgebroken = false;
 
-    async function verwerkLink() {
+    async function verwerkLink(): Promise<Verwerking> {
       const zoek = new URLSearchParams(window.location.search);
       const hekje = new URLSearchParams(window.location.hash.slice(1));
 
       // Een verlopen of al gebruikte link komt met een foutmelding terug.
       const foutcode = zoek.get("error_code") ?? hekje.get("error_code");
       if (foutcode) {
-        return foutcode === "otp_expired"
-          ? "Deze link is verlopen of al een keer gebruikt."
-          : "Deze link werd door Supabase geweigerd.";
+        return {
+          fout:
+            foutcode === "otp_expired"
+              ? uitlegBijFout({ status: 403 })
+              : "Deze link werd door Supabase geweigerd.",
+          detail: foutcode,
+        };
       }
 
       const kenmerk = zoek.get("token_hash");
@@ -83,7 +99,9 @@ export function Wachtwoordformulier() {
           token_hash: kenmerk,
           type: soort,
         });
-        return error ? uitlegBijFout(error) : null;
+        return error
+          ? { fout: uitlegBijFout(error), detail: technisch(error) }
+          : { fout: null, detail: null };
       }
 
       const toegang = hekje.get("access_token");
@@ -93,35 +111,50 @@ export function Wachtwoordformulier() {
           access_token: toegang,
           refresh_token: verversing,
         });
-        return error ? uitlegBijFout(error) : null;
+        return error
+          ? { fout: uitlegBijFout(error), detail: technisch(error) }
+          : { fout: null, detail: null };
       }
 
       // Bij `?code=` heeft de verbinding het omruilen al geprobeerd; lukt dat
       // niet, dan is de link in een andere browser geopend dan die waarin het
       // herstel werd aangevraagd.
       if (zoek.get("code")) {
-        const { data } = await supabase.auth.getSession();
-        return data.session
-          ? null
-          : "Open de link in dezelfde browser als waarin je het herstel hebt aangevraagd, of vraag een nieuwe aan.";
+        return {
+          fout: "Open de link in dezelfde browser als waarin je het herstel hebt aangevraagd, of vraag een nieuwe aan.",
+          detail: "code",
+        };
       }
 
-      return null;
+      return { fout: null, detail: null };
     }
 
-    verwerkLink().then(async (fout) => {
-      if (afgebroken) return;
+    verwerkLink()
+      .catch(
+        (oorzaak): Verwerking => ({
+          fout: uitlegBijFout({ status: 0 }),
+          detail: oorzaak instanceof Error ? oorzaak.message : null,
+        }),
+      )
+      .then(async ({ fout, detail: technischeRegel }) => {
+        if (afgebroken) return;
 
-      // Een gebruikte link hoort niet in de adresbalk te blijven staan; bij
-      // verversen zou hij opnieuw worden geprobeerd en dan mislukken.
-      window.history.replaceState(null, "", window.location.pathname);
+        // Een gebruikte link hoort niet in de adresbalk te blijven staan; bij
+        // verversen zou hij opnieuw worden geprobeerd en dan mislukken.
+        window.history.replaceState(null, "", window.location.pathname);
 
-      const { data } = await supabase.auth.getSession();
-      if (afgebroken) return;
+        const { data } = await supabase.auth.getSession();
+        if (afgebroken) return;
 
-      setUitleg(fout);
-      setStand(data.session && !fout ? "klaar" : "geen-sessie");
-    });
+        // Is er een sessie, dan kan het wachtwoord worden ingesteld — ook als
+        // de link zelf nu is opgebruikt. Dat gebeurt als iemand de link opent,
+        // het venster sluit zonder een wachtwoord te kiezen, en de link later
+        // nog eens opent: de eerste keer was hij al ingelogd.
+        setUitleg(fout);
+        setDetail(technischeRegel);
+        setEmail(data.session?.user.email ?? null);
+        setStand(data.session ? "klaar" : "geen-sessie");
+      });
 
     return () => {
       afgebroken = true;
@@ -171,12 +204,26 @@ export function Wachtwoordformulier() {
           maar één keer. Vraag de beheerder om een nieuwe link, of vraag zelf
           een nieuwe herstellink aan via &quot;Wachtwoord vergeten&quot;.
         </p>
+        {detail ? (
+          <p className="font-mono text-xs text-muted-foreground">
+            Technische melding: {detail}
+          </p>
+        ) : null}
       </div>
     );
   }
 
   return (
     <form onSubmit={bewaar} className="grid gap-4">
+      {email ? (
+        // Zodat meteen opvalt als de link in de verkeerde browser is geopend,
+        // bijvoorbeeld die van de beheerder zelf.
+        <p className="text-sm text-muted-foreground">
+          Je stelt het wachtwoord in voor{" "}
+          <span className="font-medium text-foreground">{email}</span>.
+        </p>
+      ) : null}
+
       <div className="grid gap-1.5">
         <Label htmlFor="wachtwoord">Nieuw wachtwoord</Label>
         <Input

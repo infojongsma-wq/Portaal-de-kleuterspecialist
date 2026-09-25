@@ -635,12 +635,14 @@ export function MedewerkersBeheer({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Met deze link stelt de medewerker zelf een wachtwoord in. Hij werkt
-              één keer en is beperkt houdbaar. Stuur hem persoonlijk door — wie
-              de link heeft, komt in het account. Klik hem dus ook niet zelf aan
-              om te proberen: dan is hij opgebruikt, en kies jíj het
-              wachtwoord. Zodra je dit scherm verlaat, is hij hier niet meer
-              terug te halen; maak dan een nieuwe.
+              Met deze link stelt de medewerker zelf een wachtwoord in. Stuur
+              hem meteen door: hij is standaard <strong>één uur</strong> geldig
+              en werkt één keer. Maak je een nieuwe link, dan werkt de vorige
+              niet meer. Stuur hem persoonlijk door — wie de link heeft, komt in
+              het account. Klik hem dus ook niet zelf aan om te proberen: dan is
+              hij opgebruikt, en kies jíj het wachtwoord. Zodra je dit scherm
+              verlaat, is hij hier niet meer terug te halen; maak dan een
+              nieuwe.
             </p>
           </div>
         ) : null}

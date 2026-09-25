@@ -264,6 +264,18 @@ profiel. **Link** geeft je daarna meteen een herstellink om door te sturen.
 **Klik een link niet zelf aan om hem te proberen.** Hij werkt één keer, en wie
 hem opent, kiest het wachtwoord.
 
+**Een link is standaard één uur geldig**, en een nieuwe link maakt de vorige
+ongeldig. Stuur hem dus meteen door. Wil je de medewerker meer tijd geven, zet
+dan in Supabase bij **Authentication** → **Sign In / Providers** → **Email** de
+**Email OTP Expiration** op `86400` (een dag, het maximum). Dat geldt voor
+uitnodigingen en herstellinks allebei. Langer kan het niet, en dat is ook
+verstandig: hoe langer een link geldig is, hoe langer hij te misbruiken is als
+hij in verkeerde handen valt.
+
+Werkt een link niet, dan staat onderaan het scherm een regel **Technische
+melding**. Die zegt of hij verlopen of opgebruikt was (`otp_expired`), of dat
+Supabase niet antwoordde.
+
 **Wachtwoordlengte.** Zet bij **Authentication** → **Policies** de minimale
 lengte op **12 tekens** (SPEC.md hoofdstuk 7). Het portaal vraagt er zelf ook
 om, maar de database hoort de grens te bewaken.
