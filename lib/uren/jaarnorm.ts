@@ -39,22 +39,27 @@ export function kalenderdagen(vanafIso: string, totEnMetIso: string): number {
   return dagen > 0 ? dagen : 0;
 }
 
-export interface JaarnormInvoer {
-  jaar: number;
-  /** Uit het geldende contract. */
+/** Eén contractregel, met de periode waarin hij geldt. */
+export interface ContractPeriode {
   urenPerWeek: number;
   /** Uit `contracten.norm_fulltime`, door de beheerder per contract in te vullen. */
   normFulltime: number;
+  vanaf: string;
+  tot?: string | null;
+}
+
+export interface JaarnormInvoer {
+  jaar: number;
+  /**
+   * Alle contracten die dit jaar kunnen meetellen. Ze worden elk over hun eigen
+   * dagen gerekend en bij elkaar opgeteld, zodat een wijziging halverwege het
+   * jaar klopt en een regel die buiten het dienstverband valt vanzelf op nul
+   * uitkomt.
+   */
+  contracten: ContractPeriode[];
   /** Bepaalt de berekening naar rato in het eerste jaar. */
   inDienstVanaf?: string | null;
   uitDienstPer?: string | null;
-  /**
-   * Begin en einde van het contract. Begrenzen de periode net zo goed als het
-   * dienstverband: een contract dat pas in oktober ingaat, verantwoordt over
-   * dat jaar alleen die laatste maanden.
-   */
-  contractVanaf?: string | null;
-  contractTot?: string | null;
   /** Uren met status `voltooid` plus alle handmatige urenregels. */
   gerealiseerdeUren: number;
   /** Uren met status `gepland` of `voltooid`, ook toekomstige. */
@@ -90,37 +95,69 @@ function eerste(a: string, b: string): string {
 export function berekenJaarnorm(invoer: JaarnormInvoer): JaarnormUitkomst {
   const jaarStart = `${invoer.jaar}-01-01`;
   const jaarEind = `${invoer.jaar}-12-31`;
-
-  // De periode dat de medewerker dit jaar in dienst is, binnen de looptijd van
-  // het contract. De laatste startdatum en de eerste einddatum winnen.
-  let periodeStart = jaarStart;
-  if (invoer.inDienstVanaf) periodeStart = laatste(periodeStart, invoer.inDienstVanaf);
-  if (invoer.contractVanaf) periodeStart = laatste(periodeStart, invoer.contractVanaf);
-
-  let periodeEind = jaarEind;
-  if (invoer.uitDienstPer) periodeEind = eerste(periodeEind, invoer.uitDienstPer);
-  if (invoer.contractTot) periodeEind = eerste(periodeEind, invoer.contractTot);
-
   const dagenJaar = kalenderdagen(jaarStart, jaarEind);
-  const dagenPeriode = kalenderdagen(periodeStart, periodeEind);
 
-  const jaarnorm = persoonlijkeJaarnorm(invoer.normFulltime, invoer.urenPerWeek);
+  // Per contract het stuk jaar waarin hij én geldt én de medewerker in dienst
+  // is. De laatste startdatum en de eerste einddatum winnen; blijft er niets
+  // over, dan telt dat contract dit jaar niet mee.
+  const stukken = invoer.contracten
+    .map((contract) => {
+      let start = laatste(jaarStart, contract.vanaf);
+      if (invoer.inDienstVanaf) start = laatste(start, invoer.inDienstVanaf);
 
-  // Een volledig jaar levert exact de jaarnorm op; delen en weer
-  // vermenigvuldigen zou daar een afrondingsverschil in brengen.
+      let eind = contract.tot ? eerste(jaarEind, contract.tot) : jaarEind;
+      if (invoer.uitDienstPer) eind = eerste(eind, invoer.uitDienstPer);
+
+      return { contract, start, eind, dagen: kalenderdagen(start, eind) };
+    })
+    .filter((stuk) => stuk.dagen > 0)
+    .sort((a, b) => a.start.localeCompare(b.start));
+
+  const dagenPeriode = stukken.reduce((som, stuk) => som + stuk.dagen, 0);
+
+  // Het contract dat het jaar het meest bepaalt; bij gelijk aantal dagen de
+  // laatste. Daarmee worden de deeltijdfactor en de jaarnorm getoond.
+  const bepalend = stukken.reduce<(typeof stukken)[number] | null>(
+    (beste, stuk) => (beste && beste.dagen > stuk.dagen ? beste : stuk),
+    null,
+  );
+
+  const jaarnorm = bepalend
+    ? persoonlijkeJaarnorm(
+        bepalend.contract.normFulltime,
+        bepalend.contract.urenPerWeek,
+      )
+    : 0;
+
+  // Een volledig jaar op één contract levert exact de jaarnorm op; delen en
+  // weer vermenigvuldigen zou daar een afrondingsverschil in brengen.
   const normPeriode =
-    dagenPeriode >= dagenJaar
+    stukken.length === 1 && dagenPeriode >= dagenJaar
       ? jaarnorm
-      : afrondUren((jaarnorm * dagenPeriode) / dagenJaar);
+      : afrondUren(
+          stukken.reduce(
+            (som, stuk) =>
+              som +
+              (persoonlijkeJaarnorm(
+                stuk.contract.normFulltime,
+                stuk.contract.urenPerWeek,
+              ) *
+                stuk.dagen) /
+                dagenJaar,
+            0,
+          ),
+        );
 
   const gerealiseerdeUren = afrondUren(invoer.gerealiseerdeUren);
 
   return {
-    werktijdfactor: werktijdfactor(invoer.urenPerWeek),
+    werktijdfactor: bepalend
+      ? werktijdfactor(bepalend.contract.urenPerWeek)
+      : 0,
     persoonlijkeJaarnorm: jaarnorm,
     normPeriode,
-    periodeStart,
-    periodeEind,
+    periodeStart: stukken[0]?.start ?? jaarStart,
+    periodeEind: stukken[stukken.length - 1]?.eind ?? jaarEind,
     dagenPeriode,
     dagenJaar,
     gerealiseerdeUren,

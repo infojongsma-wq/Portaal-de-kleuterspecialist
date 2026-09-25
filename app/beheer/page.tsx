@@ -65,8 +65,8 @@ export default async function BeheerPagina() {
       .filter((profiel) => profiel.rol === "medewerker")
       .map(async (medewerker) => ({
         profiel: medewerker,
-        balans: await jaarnormBalans(medewerker.id, jaar, vandaag),
-        contract: await haalContractVanJaar(medewerker.id, jaar, vandaag),
+        balans: await jaarnormBalans(medewerker.id, jaar),
+        contract: await haalContractVanJaar(medewerker.id, jaar),
         categorieen: await urenPerCategorie(
           medewerker.id,
           jaarStart,

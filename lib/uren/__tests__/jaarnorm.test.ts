@@ -50,8 +50,9 @@ describe("kalenderdagen", () => {
 describe("jaarnorm over een heel jaar", () => {
   const basis = {
     jaar: 2027,
-    urenPerWeek: 24,
-    normFulltime: NORM_FULLTIME,
+    contracten: [
+      { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2020-01-01" },
+    ],
     gerealiseerdeUren: 0,
     geplandeUren: 0,
   };
@@ -86,8 +87,9 @@ describe("jaarnorm over een heel jaar", () => {
 describe("naar rato bij in- en uitdiensttreding", () => {
   const basis = {
     jaar: 2027,
-    urenPerWeek: 24,
-    normFulltime: NORM_FULLTIME,
+    contracten: [
+      { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2020-01-01" },
+    ],
     gerealiseerdeUren: 0,
     geplandeUren: 0,
   };
@@ -147,8 +149,9 @@ describe("gerealiseerd en gepland", () => {
   it("houdt gepland en gerealiseerd los van elkaar", () => {
     const uitkomst = berekenJaarnorm({
       jaar: 2027,
-      urenPerWeek: 24,
-      normFulltime: NORM_FULLTIME,
+      contracten: [
+        { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2020-01-01" },
+      ],
       gerealiseerdeUren: 120.5,
       geplandeUren: 240.75,
     });
@@ -162,8 +165,9 @@ describe("gerealiseerd en gepland", () => {
 describe("het contract begrenst de periode net zo goed", () => {
   const basis = {
     jaar: 2026,
-    urenPerWeek: 24,
-    normFulltime: NORM_FULLTIME,
+    contracten: [
+      { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2020-01-01" },
+    ],
     gerealiseerdeUren: 0,
     geplandeUren: 0,
   };
@@ -173,7 +177,9 @@ describe("het contract begrenst de periode net zo goed", () => {
     const uitkomst = berekenJaarnorm({
       ...basis,
       inDienstVanaf: "2026-10-01",
-      contractVanaf: "2026-10-01",
+      contracten: [
+        { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2026-10-01" },
+      ],
     });
     expect(uitkomst.periodeStart).toBe("2026-10-01");
     expect(uitkomst.dagenPeriode).toBe(92);
@@ -184,7 +190,9 @@ describe("het contract begrenst de periode net zo goed", () => {
     const uitkomst = berekenJaarnorm({
       ...basis,
       inDienstVanaf: "2026-08-01",
-      contractVanaf: "2026-10-01",
+      contracten: [
+        { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2026-10-01" },
+      ],
     });
     expect(uitkomst.periodeStart).toBe("2026-10-01");
   });
@@ -192,10 +200,87 @@ describe("het contract begrenst de periode net zo goed", () => {
   it("kort ook in op de einddatum van het contract", () => {
     const uitkomst = berekenJaarnorm({
       ...basis,
-      contractVanaf: "2026-01-01",
-      contractTot: "2026-06-30",
+      contracten: [
+        {
+          urenPerWeek: 24,
+          normFulltime: NORM_FULLTIME,
+          vanaf: "2026-01-01",
+          tot: "2026-06-30",
+        },
+      ],
     });
     expect(uitkomst.periodeEind).toBe("2026-06-30");
     expect(uitkomst.dagenPeriode).toBe(181);
+  });
+});
+
+describe("meerdere contracten in één jaar", () => {
+  it("laat een contract dat vóór de indiensttreding eindigt niet meetellen", () => {
+    // Precies de situatie die in het beheerscherm ontstond: een regel vanaf
+    // 21-09 die op 30-09 is afgesloten, en de echte vanaf 01-10 — terwijl de
+    // medewerker pas op 01-10 in dienst komt.
+    const uitkomst = berekenJaarnorm({
+      jaar: 2026,
+      inDienstVanaf: "2026-10-01",
+      contracten: [
+        {
+          urenPerWeek: 24,
+          normFulltime: NORM_FULLTIME,
+          vanaf: "2026-09-21",
+          tot: "2026-09-30",
+        },
+        { urenPerWeek: 24, normFulltime: NORM_FULLTIME, vanaf: "2026-10-01" },
+      ],
+      gerealiseerdeUren: 0,
+      geplandeUren: 0,
+    });
+
+    expect(uitkomst.periodeStart).toBe("2026-10-01");
+    expect(uitkomst.dagenPeriode).toBe(92);
+    expect(uitkomst.normPeriode).toBe(250.9);
+    expect(uitkomst.werktijdfactor).toBe(0.6);
+  });
+
+  it("weegt een urenwijziging halverwege het jaar per contract", () => {
+    // 24 uur tot en met 30 juni (181 dagen), 32 uur vanaf 1 juli (184 dagen).
+    const uitkomst = berekenJaarnorm({
+      jaar: 2027,
+      contracten: [
+        {
+          urenPerWeek: 24,
+          normFulltime: NORM_FULLTIME,
+          vanaf: "2027-01-01",
+          tot: "2027-06-30",
+        },
+        { urenPerWeek: 32, normFulltime: NORM_FULLTIME, vanaf: "2027-07-01" },
+      ],
+      gerealiseerdeUren: 0,
+      geplandeUren: 0,
+    });
+
+    expect(uitkomst.dagenPeriode).toBe(365);
+    expect(uitkomst.normPeriode).toBe(1162.66);
+    // Het contract met de meeste dagen bepaalt wat er bovenaan staat.
+    expect(uitkomst.werktijdfactor).toBe(0.8);
+  });
+
+  it("geeft nul als geen enkel contract binnen het dienstverband valt", () => {
+    const uitkomst = berekenJaarnorm({
+      jaar: 2026,
+      inDienstVanaf: "2026-10-01",
+      contracten: [
+        {
+          urenPerWeek: 24,
+          normFulltime: NORM_FULLTIME,
+          vanaf: "2026-09-21",
+          tot: "2026-09-30",
+        },
+      ],
+      gerealiseerdeUren: 0,
+      geplandeUren: 0,
+    });
+
+    expect(uitkomst.dagenPeriode).toBe(0);
+    expect(uitkomst.normPeriode).toBe(0);
   });
 });

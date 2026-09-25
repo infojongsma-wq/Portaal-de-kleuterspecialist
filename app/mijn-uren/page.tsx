@@ -32,8 +32,8 @@ export default async function MijnUrenPagina() {
   const maandEind = naarIsoDatum(endOfMonth(nu));
 
   const [balans, contract, urenregels] = await Promise.all([
-    jaarnormBalans(medewerker.id, jaar, vandaag),
-    haalContractVanJaar(medewerker.id, jaar, vandaag),
+    jaarnormBalans(medewerker.id, jaar),
+    haalContractVanJaar(medewerker.id, jaar),
     urenregelsInPeriode(medewerker.id, maandStart, maandEind, "gerealiseerd"),
   ]);
 
