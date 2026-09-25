@@ -19,11 +19,15 @@ import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
 // `/diagnose` staat er bewust bij: juist als de sessie of de database stuk is
 // moet dat scherm te bereiken zijn. Het toont zonder inlog niets over de
 // database, alleen of Supabase is ingesteld.
+//
+// `/api/wekker` wordt dagelijks door Vercel aangeroepen, zonder inlog. Het
+// geeft geen gegevens terug; zie `app/api/wekker/route.ts`.
 const OPENBARE_PADEN = [
   "/inloggen",
   "/wachtwoord-vergeten",
   "/instellen",
   "/diagnose",
+  "/api/wekker",
 ];
 
 export async function proxy(verzoek: NextRequest) {

@@ -208,10 +208,24 @@ browser kan zetten.
 
 ## Stap 4b — Medewerkers kunnen uitnodigen (jij, ±5 minuten)
 
-In het beheerdersportaal maak je een medewerker aan en klik je op
-**Uitnodigen**. Supabase stuurt dan een e-mail met een eenmalige link naar
-`/instellen`, waar de medewerker zelf een wachtwoord kiest. Daarvoor moeten
-deze drie dingen kloppen:
+In het beheerdersportaal maak je een medewerker aan. Daarna zijn er twee
+knoppen in de kolom **Inlog**:
+
+- **Link** maakt een eenmalige link die je zelf doorstuurt, via WhatsApp of je
+  eigen mail. Werkt zonder e-mailinstellingen in Supabase; begin hiermee.
+- **Mail** laat Supabase de uitnodiging versturen. Daarvoor is een eigen
+  afzender nodig (punt 4 hieronder).
+
+Beide komen uit op `/instellen`, waar de medewerker zelf een wachtwoord kiest.
+Daarvoor moeten deze dingen kloppen:
+
+0. **De migratie van 25 september is gedraaid.** Zonder die migratie weigert de
+   database elk nieuw account voor een medewerker die je vooraf hebt
+   aangemaakt. De knop meldt dan "Database error saving new user". Open
+   `supabase/migrations/20260925090000_profielbewaking_alleen_voor_gebruikers.sql`
+   op GitHub, kopieer het met **Copy raw file**, en draai het in de SQL Editor
+   van Supabase via **+ New query** → plakken → **Run**. Je hoort
+   `Success. No rows returned` te zien. Eén keer doen is genoeg.
 
 1. **De geheime sleutel staat in Vercel.** Zonder `SUPABASE_SERVICE_ROLE_KEY`
    kan het portaal geen accounts aanmaken; je krijgt dan een melding die dat
@@ -237,19 +251,44 @@ deze drie dingen kloppen:
    Staat dat er niet in, dan weigert Supabase de link uit de e-mail. Krijg je
    later een eigen webadres (stap 6), zet dat er dan ook bij.
 
-3. **Er is een afzender voor e-mail.** Supabase verstuurt standaard zelf mail,
+3. **Alleen voor de knop Mail: er is een afzender voor e-mail.** Supabase verstuurt standaard zelf mail,
    maar dat is bedoeld om mee te proberen: een paar berichten per uur, en niet
    altijd betrouwbaar bezorgd. Voor echt gebruik zet je bij **Authentication**
    → **Emails** → **SMTP Settings** je eigen afzender aan, bijvoorbeeld die van
    Strato.
 
 **Bestaat het account al**, bijvoorbeeld omdat je het met de hand hebt
-aangemaakt? Dan koppelt de knop **Uitnodigen** dat bestaande account aan het
-profiel, en kan de medewerker via "Wachtwoord vergeten" naar binnen.
+aangemaakt? Dan koppelen **Link** en **Mail** dat bestaande account aan het
+profiel. **Link** geeft je daarna meteen een herstellink om door te sturen.
+
+**Klik een link niet zelf aan om hem te proberen.** Hij werkt één keer, en wie
+hem opent, kiest het wachtwoord.
 
 **Wachtwoordlengte.** Zet bij **Authentication** → **Policies** de minimale
 lengte op **12 tekens** (SPEC.md hoofdstuk 7). Het portaal vraagt er zelf ook
 om, maar de database hoort de grens te bewaken.
+
+---
+
+## Stap 4c — De wekker (gaat vanzelf)
+
+Een gratis Supabase-project gaat na zeven dagen zonder gebruik in de
+pauzestand; dan lukt inloggen niet tot je het in het dashboard weer aanzet. Om
+dat te voorkomen roept Vercel elke ochtend rond 06:00 (UTC) het adres
+`/api/wekker` aan. Dat stelt de database één lege vraag — genoeg om als
+gebruik te tellen. Het staat in `vercel.json` en kost niets extra.
+
+Controleren: Vercel → je project → **Settings** → **Cron Jobs**. Daar hoort
+`/api/wekker` te staan, met onder **View Logs** een regel per dag.
+
+**Optioneel, voor extra afscherming:** voeg in Vercel de omgevingsvariabele
+`CRON_SECRET` toe, met een lange willekeurige tekst als waarde, soort
+**Sensitive**. Vercel stuurt die dan mee, en het adres weigert ieder ander.
+Zonder die variabele is het adres open, maar het geeft niets terug en doet
+niets dan die ene lege vraag.
+
+**Slaapt het project al**, dan maakt de wekker het niet meer wakker. Dat blijft
+de knop **Restore** in het Supabase-dashboard.
 
 ---
 
@@ -315,7 +354,8 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Gegevens bewaren in de database | gebouwd |
 | Contracturen vastleggen in Beheer | gebouwd |
 | Medewerkers aanmaken en wijzigen in Beheer | gebouwd |
-| Medewerkers uitnodigen per e-mail | gebouwd — zie stap 4b |
+| Medewerkers uitnodigen per link of e-mail | gebouwd — zie stap 4b, eerst de migratie draaien |
+| Wekker tegen de pauzestand van Supabase | gebouwd — zie stap 4c |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | nog te lezen, niet te wijzigen |
