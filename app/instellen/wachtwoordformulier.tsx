@@ -12,16 +12,44 @@ import { supabaseBrowser } from "@/lib/supabase/browser";
 /**
  * Wachtwoord kiezen na een uitnodiging of een herstelverzoek.
  *
- * Supabase zet de sessie in het adres achter een hekje (`#access_token=…`).
- * Dat deel van een adres komt nooit bij de server aan — alleen de browser ziet
- * het. Daarom gebeurt dit hier en niet in een server action: de
- * browserverbinding leest het uit het adres, ruilt het om voor een sessie en
- * zet die in de cookies, waarna de server de gebruiker herkent.
+ * Er komen hier drie soorten links binnen, en elk levert de sessie anders aan:
+ *
+ *  1. `?token_hash=…&type=…` — de links die het beheerscherm zelf maakt. Het
+ *     kenmerk wordt hier bij Supabase gecontroleerd met `verifyOtp`. Werkt in
+ *     elke browser.
+ *  2. `#access_token=…` — links uit e-mails die Supabase zelf verstuurt. De
+ *     inlogverbinding van het portaal weigert dat formaat uit zichzelf, dus
+ *     zetten we de sessie hier met de hand.
+ *  3. `?code=…` — de herstellink van "wachtwoord vergeten". Die ruilt de
+ *     verbinding zelf om, maar alleen in de browser waarin het herstel werd
+ *     aangevraagd.
+ *
+ * Dit gebeurt in de browser en niet in een server action: het deel achter het
+ * hekje komt nooit bij de server aan. De verbinding zet de sessie in de
+ * cookies, waarna de server de gebruiker herkent.
  */
 
 const MINIMALE_LENGTE = 12;
 
 type Stand = "bezig" | "klaar" | "geen-sessie" | "opslaan";
+
+const LINKSOORTEN = ["invite", "recovery", "magiclink", "email"] as const;
+type Linksoort = (typeof LINKSOORTEN)[number];
+
+function isLinksoort(waarde: string | null): waarde is Linksoort {
+  return LINKSOORTEN.includes(waarde as Linksoort);
+}
+
+/**
+ * Een verlopen link en een onbereikbare database zien er voor de gebruiker
+ * hetzelfde uit, maar vragen iets anders: een nieuwe link, of even wachten.
+ */
+function uitlegBijFout(fout: { status?: number }): string {
+  if (fout.status === undefined || fout.status === 0 || fout.status >= 500) {
+    return "Supabase antwoordt op dit moment niet. Open de link over een paar minuten opnieuw.";
+  }
+  return "Deze link is verlopen of al een keer gebruikt.";
+}
 
 export function Wachtwoordformulier() {
   const router = useRouter();
@@ -30,24 +58,73 @@ export function Wachtwoordformulier() {
   const [herhaling, setHerhaling] = React.useState("");
   const [melding, setMelding] = React.useState<string | null>(null);
 
+  const [uitleg, setUitleg] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     const supabase = supabaseBrowser();
     let afgebroken = false;
 
-    // De verbinding verwerkt het adres zelf; even wachten tot dat klaar is.
-    const { data: luisteraar } = supabase.auth.onAuthStateChange((_, sessie) => {
-      if (afgebroken) return;
-      if (sessie) setStand("klaar");
-    });
+    async function verwerkLink() {
+      const zoek = new URLSearchParams(window.location.search);
+      const hekje = new URLSearchParams(window.location.hash.slice(1));
 
-    supabase.auth.getSession().then(({ data }) => {
+      // Een verlopen of al gebruikte link komt met een foutmelding terug.
+      const foutcode = zoek.get("error_code") ?? hekje.get("error_code");
+      if (foutcode) {
+        return foutcode === "otp_expired"
+          ? "Deze link is verlopen of al een keer gebruikt."
+          : "Deze link werd door Supabase geweigerd.";
+      }
+
+      const kenmerk = zoek.get("token_hash");
+      const soort = zoek.get("type");
+      if (kenmerk && isLinksoort(soort)) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: kenmerk,
+          type: soort,
+        });
+        return error ? uitlegBijFout(error) : null;
+      }
+
+      const toegang = hekje.get("access_token");
+      const verversing = hekje.get("refresh_token");
+      if (toegang && verversing) {
+        const { error } = await supabase.auth.setSession({
+          access_token: toegang,
+          refresh_token: verversing,
+        });
+        return error ? uitlegBijFout(error) : null;
+      }
+
+      // Bij `?code=` heeft de verbinding het omruilen al geprobeerd; lukt dat
+      // niet, dan is de link in een andere browser geopend dan die waarin het
+      // herstel werd aangevraagd.
+      if (zoek.get("code")) {
+        const { data } = await supabase.auth.getSession();
+        return data.session
+          ? null
+          : "Open de link in dezelfde browser als waarin je het herstel hebt aangevraagd, of vraag een nieuwe aan.";
+      }
+
+      return null;
+    }
+
+    verwerkLink().then(async (fout) => {
       if (afgebroken) return;
-      setStand(data.session ? "klaar" : "geen-sessie");
+
+      // Een gebruikte link hoort niet in de adresbalk te blijven staan; bij
+      // verversen zou hij opnieuw worden geprobeerd en dan mislukken.
+      window.history.replaceState(null, "", window.location.pathname);
+
+      const { data } = await supabase.auth.getSession();
+      if (afgebroken) return;
+
+      setUitleg(fout);
+      setStand(data.session && !fout ? "klaar" : "geen-sessie");
     });
 
     return () => {
       afgebroken = true;
-      luisteraar.subscription.unsubscribe();
     };
   }, []);
 
@@ -88,10 +165,11 @@ export function Wachtwoordformulier() {
     return (
       <div className="grid gap-2 text-sm">
         <p className="font-medium">Deze link werkt niet meer</p>
+        {uitleg ? <p>{uitleg}</p> : null}
         <p className="text-muted-foreground">
           Een uitnodiging en een herstellink zijn beperkt houdbaar en werken
-          maar één keer. Vraag de beheerder om een nieuwe uitnodiging, of vraag
-          zelf een nieuwe herstellink aan via &quot;Wachtwoord vergeten&quot;.
+          maar één keer. Vraag de beheerder om een nieuwe link, of vraag zelf
+          een nieuwe herstellink aan via &quot;Wachtwoord vergeten&quot;.
         </p>
       </div>
     );

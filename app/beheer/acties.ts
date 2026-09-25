@@ -160,6 +160,31 @@ function authFoutTekst(fout: {
   return fout.name || "Supabase gaf geen toelichting";
 }
 
+/** Of Supabase weigert omdat er al een account met dit e-mailadres bestaat. */
+function bestaatAl(fout: { message?: string; status?: number; code?: string }) {
+  return (
+    fout.status === 422 ||
+    fout.code === "email_exists" ||
+    /already been registered|already registered|already exists/i.test(
+      fout.message ?? "",
+    )
+  );
+}
+
+/**
+ * Extra uitleg als de database het nieuwe account weigerde.
+ *
+ * "Database error saving new user" betekent dat een trigger in Postgres de
+ * koppeling tussen account en profiel tegenhield. Dat was precies wat de
+ * migratie van 25 september oplost; staat die er nog niet in, dan loopt elke
+ * uitnodiging hierop vast.
+ */
+function databaseHint(fout: { message?: string }): string {
+  return /database error/i.test(fout.message ?? "")
+    ? " De database weigerde het nieuwe account. Draai in de SQL Editor van Supabase de migratie 20260925090000_profielbewaking_alleen_voor_gebruikers.sql en probeer het daarna opnieuw."
+    : "";
+}
+
 /** Het adres waarop dit portaal draait, zoals de browser het net opvroeg. */
 async function portaalAdres(): Promise<string> {
   const kop = await headers();
@@ -219,13 +244,7 @@ export async function nodigMedewerkerUit(
     // Bestaat het account al — bijvoorbeeld met de hand aangemaakt in
     // Supabase — dan is er niets uit te nodigen, maar mist alleen de koppeling
     // met dit profiel. Die leggen we hier alsnog.
-    const bestaatAl =
-      error.status === 422 ||
-      /already been registered|already registered|already exists/i.test(
-        error.message,
-      );
-
-    if (bestaatAl) {
+    if (bestaatAl(error)) {
       const gekoppeld = await koppelBestaandAccount(profiel.id, profiel.email);
       return gekoppeld
         ? {
@@ -240,16 +259,18 @@ export async function nodigMedewerkerUit(
           };
     }
 
+    const hint = databaseHint(error);
+
     return {
       gelukt: false,
       melding:
-        `De uitnodiging kon niet worden verstuurd. [${authFoutTekst(error)}] ` +
-        "Meestal ligt het aan de e-mail: zolang er in Supabase geen eigen " +
-        "afzender is ingesteld, verstuurt Supabase alleen proefberichten — een " +
-        "paar per uur, en vaak alleen naar het adres waarmee je zelf bij " +
-        "Supabase bent aangemeld. Zie PUBLICEREN.md stap 4b. Je kunt het " +
-        "account ook met de hand aanmaken bij Authentication → Users; deze " +
-        "knop koppelt het daarna vanzelf aan dit profiel.",
+        `De uitnodiging kon niet worden verstuurd. [${authFoutTekst(error)}]` +
+        (hint ||
+          " Meestal ligt het aan de e-mail: zolang er in Supabase geen eigen " +
+            "afzender is ingesteld, verstuurt Supabase alleen proefberichten — " +
+            "een paar per uur, en vaak alleen naar het adres waarmee je zelf " +
+            "bij Supabase bent aangemeld. Gebruik dan de knop Link: die maakt " +
+            "een link die je zelf doorstuurt, zonder e-mail."),
     };
   }
 
@@ -304,6 +325,12 @@ async function koppelBestaandAccount(
  * Heeft de medewerker nog geen account, dan maakt Supabase dat meteen aan en is
  * het een uitnodiging. Bestaat het al, dan is het een herstellink.
  *
+ * De link wijst rechtstreeks naar `/instellen` in dit portaal, met het
+ * eenmalige kenmerk van Supabase erin — niet naar de link die Supabase zelf
+ * teruggeeft. Die laatste zet de inloggegevens achter een hekje in het adres,
+ * en dat formaat weigert de inlogverbinding van het portaal. Met het kenmerk
+ * controleert `/instellen` de link zelf bij Supabase, in welke browser dan ook.
+ *
  * De link geeft toegang tot het account. Hij komt daarom alleen op het scherm
  * van de beheerder, en nergens in een logregel.
  */
@@ -335,27 +362,52 @@ export async function maakToegangslink(
     };
   }
 
-  const { data, error } = await beheer.auth.admin.generateLink({
-    type: profiel.heeftAccount ? "recovery" : "invite",
+  const adres = await portaalAdres();
+  let soort: "invite" | "recovery" = profiel.heeftAccount
+    ? "recovery"
+    : "invite";
+
+  let uitkomst = await beheer.auth.admin.generateLink({
+    type: soort,
     email: profiel.email,
-    options: { redirectTo: `${await portaalAdres()}/instellen` },
+    options: { redirectTo: `${adres}/instellen` },
   });
 
-  if (error) {
+  // Staat het account al in Supabase maar hangt het nog niet aan dit profiel —
+  // bijvoorbeeld omdat het met de hand is aangemaakt — dan weigert Supabase een
+  // uitnodiging. Dan koppelen we het alsnog en wordt het een herstellink.
+  if (uitkomst.error && soort === "invite" && bestaatAl(uitkomst.error)) {
+    const gekoppeld = await koppelBestaandAccount(profiel.id, profiel.email);
+    if (!gekoppeld) {
+      return {
+        gelukt: false,
+        melding:
+          "Er bestaat al een account met dit e-mailadres, maar dat kon niet aan dit profiel worden gekoppeld.",
+      };
+    }
+
+    soort = "recovery";
+    uitkomst = await beheer.auth.admin.generateLink({
+      type: soort,
+      email: profiel.email,
+      options: { redirectTo: `${adres}/instellen` },
+    });
+  }
+
+  if (uitkomst.error) {
     return {
       gelukt: false,
-      melding: `De link kon niet worden gemaakt. [${authFoutTekst(error)}]`,
+      melding: `De link kon niet worden gemaakt. [${authFoutTekst(uitkomst.error)}]${databaseHint(uitkomst.error)}`,
     };
   }
 
-  const link = data.properties?.action_link;
+  const kenmerk = uitkomst.data.properties?.hashed_token;
 
-  if (!link) {
-    return {
-      gelukt: false,
-      melding: "Supabase gaf geen link terug.",
-    };
+  if (!kenmerk) {
+    return { gelukt: false, melding: "Supabase gaf geen link terug." };
   }
+
+  const link = `${adres}/instellen?token_hash=${encodeURIComponent(kenmerk)}&type=${soort}`;
 
   // Bestond het account nog niet, dan is het zojuist aangemaakt en heeft de
   // trigger het aan dit profiel gekoppeld. Even verversen, anders blijft er
@@ -365,9 +417,10 @@ export async function maakToegangslink(
   return {
     gelukt: true,
     link,
-    melding: profiel.heeftAccount
-      ? `Herstellink gemaakt voor ${profiel.email}.`
-      : `Uitnodigingslink gemaakt voor ${profiel.email}.`,
+    melding:
+      soort === "recovery"
+        ? `Herstellink gemaakt voor ${profiel.email}.`
+        : `Uitnodigingslink gemaakt voor ${profiel.email}.`,
   };
 }
 

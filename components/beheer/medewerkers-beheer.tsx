@@ -637,8 +637,10 @@ export function MedewerkersBeheer({
             <p className="text-xs text-muted-foreground">
               Met deze link stelt de medewerker zelf een wachtwoord in. Hij werkt
               één keer en is beperkt houdbaar. Stuur hem persoonlijk door — wie
-              de link heeft, komt in het account. Zodra je dit scherm verlaat, is
-              hij hier niet meer terug te halen; maak dan een nieuwe.
+              de link heeft, komt in het account. Klik hem dus ook niet zelf aan
+              om te proberen: dan is hij opgebruikt, en kies jíj het
+              wachtwoord. Zodra je dit scherm verlaat, is hij hier niet meer
+              terug te halen; maak dan een nieuwe.
             </p>
           </div>
         ) : null}
