@@ -11,7 +11,7 @@ De Kleuterspecialist verzorgt trainingen en observaties bij basisscholen. Er is 
 
 De app moet drie dingen doen:
 
-1. **Registreren** — afspraken met scholen vastleggen, met automatische urenberekening
+1. **Registreren** — afspraken vastleggen. Niet elke afspraak heeft een school: een afspraak is **op school** (training, observatie; uren automatisch berekend) of **anders** (literatuurstudie, overig, niet beschikbaar; uren zelf ingevuld). Zie 4.5.
 2. **Plannen** — een agenda die laat zien wat wanneer staat gepland
 3. **Verantwoorden** — een urenoverzicht dat aantoont dat de jaarurennorm gehaald wordt
 
@@ -163,35 +163,50 @@ Maximaal één `is_primair = true` per klant (afdwingen met een partial unique i
 
 Instelbaar in het beheerdersportaal. **Nooit hardcoderen in de applicatiecode.**
 
+Niet elke afspraak heeft een school. De soorten vallen in twee groepen:
+
+- **Op school** (`handmatige_uren = false`) — Training en Observatie. De afspraak hoort bij een school. De uren liggen per soort vast en de reistijd volgt uit de school.
+- **Anders** (`handmatige_uren = true`) — Literatuurstudie, Overig en Niet beschikbaar. Geen school, dus ook geen contactpersoon, geen voorbereiding en geen reistijd. De medewerker vult het aantal uren per afspraak zelf in.
+
 ```sql
 id                 uuid primary key
 naam               text not null unique
-uren_op_locatie    numeric(4,2) not null
-uren_voorbereiding numeric(4,2) not null
+uren_op_locatie    numeric(4,2) not null              -- 0 bij 'anders'
+uren_voorbereiding numeric(4,2) not null              -- 0 bij 'anders'
 kleur              text not null default '#3b82f6'   -- voor de agenda
 volgorde           integer not null default 0
-handmatige_uren    boolean not null default false     -- true bij 'Anders'
+handmatige_uren    boolean not null default false     -- true bij 'anders': geen school, uren zelf ingevuld
+urencategorie      text check (urencategorie in
+                     ('inlezen_trainingen','literatuur_lezen','overleg','overig'))
+                                                      -- alleen bij 'anders': categorie van de uren (4.7)
+telt_als_werktijd  boolean not null default true      -- false: wel in de agenda, telt nergens mee
 actief             boolean not null default true
 ```
 
 Startgegevens:
 
-| naam | uren_op_locatie | uren_voorbereiding | handmatige_uren |
-|---|---|---|---|
-| Training | 3,00 | 3,00 | false |
-| Observatie | 3,50 | 1,00 | false |
-| Anders | 0,00 | 0,00 | true |
+| naam | uren_op_locatie | uren_voorbereiding | handmatige_uren | urencategorie | telt_als_werktijd |
+|---|---|---|---|---|---|
+| Training | 3,00 | 3,00 | false | — | true |
+| Observatie | 3,50 | 1,00 | false | — | true |
+| Literatuurstudie | 0,00 | 0,00 | true | `literatuur_lezen` | true |
+| Overig | 0,00 | 0,00 | true | `overig` | true |
+| Niet beschikbaar | 0,00 | 0,00 | true | — | false |
+
+Bij 'anders' staan de uren niet bij de soort maar bij de afspraak (4.6). De eerdere startsoort 'Anders', één soort met handmatige uren, is vervangen door deze drie.
+
+Of een soort op school of anders is, ligt vast zodra er afspraken aan hangen. Wisselen zou de betekenis van die afspraken met terugwerkende kracht veranderen. `telt_als_werktijd` blijft wel te wijzigen en geldt dan ook voor bestaande afspraken.
 
 ### 4.6 `afspraken`
 
 ```sql
 id                    uuid primary key
-klant_id              uuid not null references klanten(id)
+klant_id              uuid references klanten(id)   -- leeg bij een afspraak 'anders'
 contactpersoon_id     uuid references contactpersonen(id)
 medewerker_id         uuid not null references profielen(id)
 activiteitsoort_id    uuid not null references activiteitsoorten(id)
 
-titel                 text not null            -- naam van de training
+titel                 text not null            -- naam van de training; bij 'anders' een omschrijving
 datum                 date not null
 dagdeel               text not null check (dagdeel in ('ochtend','middag','hele_dag','anders'))
 anders_omschrijving   text                     -- verplicht als dagdeel = 'anders'
@@ -216,6 +231,13 @@ notitie               text
 
 gewijzigd_door        uuid references profielen(id)
 ```
+
+**Op school of anders.** Of een afspraak een school heeft, volgt uit de soort (4.5):
+
+- **Op school:** `klant_id` is verplicht. Uren en reistijd worden bij het opslaan overgenomen uit de soort en de school.
+- **Anders:** `klant_id`, `contactpersoon_id`, de reisgegevens en `afspraken_met_klant` blijven leeg. De zelf ingevulde uren staan in `uren_op_locatie`, `uren_voorbereiding` is 0 en `voorbereiding_datum` is gelijk aan `datum`. Een datum is verplicht.
+
+De database staat een lege `klant_id` toe. Dat een afspraak op school ook echt een school heeft, controleert de server bij het opslaan.
 
 **Waarschuwing in de UI bij `notitie` en `afspraken_met_klant`:**
 > Alleen zakelijke afspraken. Geen namen of bijzonderheden van individuele leerlingen.
@@ -242,6 +264,8 @@ Toegestane categorieën:
 | `op_locatie` | ja |
 | `voorbereiding` | ja |
 | `reistijd` | ja |
+| `inlezen_trainingen` | ja |
+| `literatuur_lezen` | ja |
 | `administratie` | ja |
 | `overleg` | ja |
 | `scholing` | ja |
@@ -252,6 +276,8 @@ Toegestane categorieën:
 | `feestdag` | nee — later |
 
 De laatste drie staan wel in de check-constraint zodat ze later zonder migratie te gebruiken zijn.
+
+Uren van een afspraak 'anders' vallen onder de `urencategorie` van de soort (4.5): Literatuurstudie onder `literatuur_lezen`, Overig onder `overig`.
 
 ### 4.8 `niet_inzetbare_dagen`
 
@@ -307,9 +333,12 @@ basisuren = uren_op_locatie + uren_voorbereiding
 |---|---|---|---|
 | Training | 3,0 | 3,0 | **6,0** |
 | Observatie | 3,5 | 1,0 | **4,5** |
-| Anders | handmatig | handmatig | handmatig |
+| Literatuurstudie, Overig (anders) | — | — | **zelf ingevuld** |
+| Niet beschikbaar (anders) | — | — | **telt niet mee** |
 
 De voorbereidingsuren worden geboekt op `voorbereiding_datum`, de locatie-uren op `datum`. Standaard zijn die gelijk, maar ze mogen verschillen.
+
+**Afspraken 'anders'** hebben geen school, dus geen voorbereiding en geen reistijd (5.2). De zelf ingevulde uren tellen op `datum`, in de urenverantwoording onder de `urencategorie` van de soort. Een soort met `telt_als_werktijd = false`, zoals Niet beschikbaar, staat wel in de agenda maar telt nergens mee: niet in de dagtotalen, niet in de reistijd, niet in de waarschuwing bij lange dagen en niet in de jaarnorm.
 
 ### 5.2 Reistijd per dag
 
@@ -345,7 +374,9 @@ werkuren_dag = Σ uren_op_locatie (afspraken met datum = dag, status ≠ geannul
              + Σ handmatige urenregels op die dag
 ```
 
-Waarschuw bij `werkuren_dag > 12` (Arbeidstijdenwet-grens voor volwassenen).
+Bij een afspraak 'anders' staan de zelf ingevulde uren in `uren_op_locatie`; ze tellen dus mee in de eerste regel. Afspraken van een soort met `telt_als_werktijd = false` (Niet beschikbaar) tellen in geen enkele regel mee.
+
+Waarschuw bij `werkuren_dag > 12` (Arbeidstijdenwet-grens voor volwassenen). Uren van Niet beschikbaar tellen daarbij niet mee.
 
 **Voorbeeld — één training in Zwolle (enkele reis 60 min):**
 ```
@@ -369,6 +400,16 @@ totaal              7,67 uur
 ```
 Dag van de observatie:  3,50 op locatie + 0,00 reistijd = 3,50 uur
 Dag ervoor:             1,00 voorbereiding              = 1,00 uur
+```
+
+**Voorbeeld — training zonder reistijd, 2,5 uur literatuurstudie en 4 uur niet beschikbaar op dezelfde dag:**
+```
+training op locatie       3,00
+training voorbereiding    3,00
+literatuurstudie          2,50
+niet beschikbaar (4,00)   telt niet mee
+------------------------
+totaal                    8,50 uur
 ```
 
 ### 5.4 Jaarurennorm-balans
@@ -423,6 +464,8 @@ norm_eerste_jaar = persoonlijke_jaarnorm
 
 Alleen **gerealiseerd** telt mee voor het saldo.
 
+Dit geldt ook voor afspraken 'anders': Literatuurstudie en Overig tellen als gerealiseerd zodra ze als gedaan zijn afgevinkt. Niet beschikbaar telt in geen van beide kolommen.
+
 ### 5.5 Statusregels
 
 | Status | Locatie-uren tellen | Voorbereidingsuren tellen | Reistijd telt |
@@ -452,20 +495,23 @@ Tweekolomsindeling, minimaal 1280px breed.
 
 **Links — afspraakformulier:**
 
+Het formulier begint met de soort. Die bepaalt of de afspraak op school of anders is (4.5), en daarmee welke velden er verder staan.
+
 | Veld | Type | Opmerking |
 |---|---|---|
-| Klant | Combobox met zoeken-tijdens-typen | Vanaf 2 tekens zoeken op naam en plaats; knop "nieuwe klant" opent een dialoog |
-| Contactpersoon | Keuzelijst | Gefilterd op gekozen klant |
-| Soort activiteit | Keuzelijst | Uit `activiteitsoorten` |
-| Naam van de training | Tekst | Verplicht |
-| Datum | Datumkiezer | dd-mm-jjjj |
+| Soort afspraak | Keuzelijst | Uit `activiteitsoorten`, in twee groepen: **Op school** en **Anders** |
+| Klant | Combobox met zoeken-tijdens-typen | Alleen bij op school. Vanaf 2 tekens zoeken op naam en plaats; knop "nieuwe klant" opent een dialoog |
+| Contactpersoon | Keuzelijst | Alleen bij op school. Gefilterd op gekozen klant |
+| Naam van de training | Tekst | Verplicht. Bij anders heet dit veld "Omschrijving" |
+| Datum | Datumkiezer | dd-mm-jjjj. Bij anders verplicht |
+| Aantal uren | Getal | Alleen bij anders. Verplicht, behalve bij een soort die niet meetelt (Niet beschikbaar) |
 | Dagdeel | Keuzerondjes | Ochtend / Middag / Hele dag / Anders |
-| Anders, namelijk | Tekst | Alleen zichtbaar bij "Anders" |
-| Datum voorbereiding | Datumkiezer | Standaard gelijk aan datum |
-| Reistijd enkele reis | Getal, minuten | Voorgevuld vanuit de klant, aanpasbaar |
-| Afspraken met klant | Tekstvak | Met privacywaarschuwing |
+| Anders, namelijk | Tekst | Alleen zichtbaar bij dagdeel "Anders" |
+| Datum voorbereiding | Datumkiezer | Alleen bij op school. Standaard gelijk aan datum |
+| Reistijd enkele reis | Getal, minuten | Alleen bij op school. Voorgevuld vanuit de klant, aanpasbaar |
+| Afspraken met klant | Tekstvak | Alleen bij op school. Met privacywaarschuwing |
 | Notities/memo | Tekstvak | Met privacywaarschuwing |
-| Training voltooid | Vinkje | Zet status op `voltooid` |
+| Training voltooid | Vinkje | Zet status op `voltooid`. Bij anders heet dit "Gedaan"; ontbreekt bij een soort die niet meetelt |
 | **Gegevens opslaan** | Knop | |
 
 Onder het formulier een **live urenberekening** die meteen laat zien: `3,00 op locatie + 3,00 voorbereiding + 0,00 reistijd = 6,00 uur`.
@@ -480,6 +526,8 @@ FullCalendar met knoppen voor maand, week en dag. Kleuren per activiteitsoort. K
 
 Chronologische tabel: datum · klant · plaats · soort · titel · uren · status.
 Filters op periode, klant, soort en status. Sorteerbaar. Exporteren naar Excel en PDF.
+
+Bij afspraken 'anders' blijven klant en plaats leeg. Bij een soort die niet meetelt (Niet beschikbaar) staat "telt niet mee" in plaats van uren. In de Excel-export staan zelf ingevulde uren in een eigen kolom, naast op locatie, voorbereiding en reistijd.
 
 ### 6.4 Klanten (`/klanten`)
 
@@ -502,7 +550,7 @@ Alleen voor `beheerder`:
 
 - **Medewerkers** — profielen aanmaken, uitnodigen per e-mail, contract met uren per week en ingangsdatum vastleggen
 - **Urenverantwoording** — per medewerker en per periode: gepland versus gerealiseerd, saldo ten opzichte van de norm, uitsplitsing per categorie, grafiek met normlijn en werkelijke lijn
-- **Activiteitsoorten** — uren per soort aanpassen
+- **Soorten afspraken** — per soort instellen of de uren vastliggen (op school: uren op locatie en voorbereiding) of dat de medewerker ze zelf invult (anders: onder welke urencategorie ze vallen en of ze meetellen als werktijd)
 - **Niet-inzetbare dagen** — schoolvakanties en feestdagen per jaar invoeren
 - **Instellingen** — eigen reistijd per dag, kilometervergoeding, afronding
 - **Wijzigingslog** — alleen lezen
@@ -563,12 +611,13 @@ Rol bepalen via een `security definer`-functie die `rol` uit `profielen` haalt o
 Verplichte geautomatiseerde tests vóór fase 4 als afgerond geldt:
 
 1. Alle reistijd-testgevallen uit 5.2
-2. De drie dagvoorbeelden uit 5.3
+2. De vier dagvoorbeelden uit 5.3
 3. Alle werktijdfactor-combinaties uit 5.4
 4. De statusmatrix uit 5.5 — elk van de vier statussen, met en zonder `voorbereiding_gedaan`
 5. Berekening naar rato bij een indiensttreding op 1 maart, 1 juli en 1 oktober
 6. Een jaar waarin een schoolvakantie op een feestdag valt (mag niet dubbel worden afgetrokken)
 7. **Autorisatietest:** medewerker A mag op geen enkele manier bij de afspraken of uren van medewerker B
+8. Afspraken 'anders' (5.1 en 5.3): zelf ingevulde uren tellen mee zonder voorbereiding en reistijd; Niet beschikbaar telt nergens mee, ook niet in de waarschuwing bij meer dan 12 uur
 
 ---
 
