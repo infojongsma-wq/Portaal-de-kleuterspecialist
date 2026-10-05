@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
+import { KilometervergoedingInstelling } from "@/components/beheer/kilometervergoeding-instelling";
 import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
@@ -20,7 +21,6 @@ import {
   urenPerCategorie,
 } from "@/lib/data/queries";
 import {
-  formatteerBedrag,
   formatteerDatum,
   formatteerUren,
   naarIsoDatum,
@@ -285,13 +285,8 @@ export default async function BeheerPagina() {
                   label="Waarschuwing boven"
                   waarde={`${formatteerUren(instellingen.maxUrenPerDagWaarschuwing)} uur per dag`}
                 />
-                <Instelling
-                  label="Kilometervergoeding"
-                  waarde={
-                    instellingen.kilometervergoedingPerKm != null
-                      ? `${formatteerBedrag(instellingen.kilometervergoedingPerKm)} per km`
-                      : "niet ingesteld"
-                  }
+                <KilometervergoedingInstelling
+                  waarde={instellingen.kilometervergoedingPerKm}
                 />
               </dl>
             </CardContent>

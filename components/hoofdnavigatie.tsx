@@ -13,6 +13,7 @@ const ONDERDELEN = [
   { pad: "/overzicht", label: "Overzicht" },
   { pad: "/klanten", label: "Klanten" },
   { pad: "/mijn-uren", label: "Mijn uren" },
+  { pad: "/ritten", label: "Ritten" },
 ] as const;
 
 /** Knoppenbalk boven in het scherm (SPEC.md 6.2). */

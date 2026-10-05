@@ -6,7 +6,9 @@ import { headers } from "next/headers";
 import { werkset } from "@/lib/data/werkset";
 import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { supabaseServer } from "@/lib/supabase/server";
+import { afrondOpDecimalen } from "@/lib/uren";
 import { medewerkerSchema } from "@/lib/validatie/medewerker";
+import { kilometervergoedingSchema, leesDecimaal } from "@/lib/validatie/rit";
 
 /**
  * Beheerdersacties: medewerkers vastleggen (SPEC.md 6.6).
@@ -459,4 +461,68 @@ export async function verwijderContract(
 
   ververs();
   return { gelukt: true, melding: "Contract weggehaald." };
+}
+
+// ---------------------------------------------------------------------------
+// Instellingen: kilometervergoeding (SPEC.md 4.9 en 5.7)
+// ---------------------------------------------------------------------------
+
+/**
+ * De vergoeding per kilometer voor de rittenregistratie. Geldt voor nieuwe
+ * ritten: een rit legt bij het opslaan de vergoeding vast die dan geldt, dus
+ * eerdere maanden veranderen niet mee.
+ */
+export async function bewaarKilometervergoeding(
+  invoer: unknown,
+): Promise<BeheerResultaat> {
+  const gecontroleerd = kilometervergoedingSchema.safeParse(invoer);
+  if (!gecontroleerd.success) {
+    const melding = gecontroleerd.error.issues[0]?.message ?? "Vul een bedrag in.";
+    return { gelukt: false, melding, velden: { vergoeding: melding } };
+  }
+
+  const gegevens = await werkset();
+  if (gegevens.ik.rol !== "beheerder") {
+    return { gelukt: false, melding: "Alleen de beheerder kan dit wijzigen." };
+  }
+
+  // In de database staan drie decimalen, zodat ook € 0,235 kan.
+  const bedrag = afrondOpDecimalen(
+    leesDecimaal(gecontroleerd.data.vergoeding) ?? 0,
+    3,
+  );
+
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase
+    .from("instellingen")
+    .update({ kilometervergoeding_per_km: bedrag })
+    .eq("enige_rij", true)
+    .select("id");
+  if (error) {
+    return {
+      gelukt: false,
+      melding: `De vergoeding kon niet worden opgeslagen. (${error.message})`,
+    };
+  }
+
+  // Bestaat de rij met instellingen nog niet, dan maken we hem aan.
+  if (!data || data.length === 0) {
+    const { error: invoegFout } = await supabase
+      .from("instellingen")
+      .insert({ kilometervergoeding_per_km: bedrag });
+    if (invoegFout) {
+      return {
+        gelukt: false,
+        melding: `De vergoeding kon niet worden opgeslagen. (${invoegFout.message})`,
+      };
+    }
+  }
+
+  revalidatePath("/beheer");
+  revalidatePath("/ritten");
+  return {
+    gelukt: true,
+    melding:
+      "Opgeslagen. Nieuwe ritten krijgen deze vergoeding; ritten die al zijn opgeslagen houden hun bedrag.",
+  };
 }

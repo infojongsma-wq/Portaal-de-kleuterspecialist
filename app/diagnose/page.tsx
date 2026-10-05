@@ -1,7 +1,14 @@
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatteerKm } from "@/lib/formatteer";
+import {
+  afstandInMeters,
+  googleSleutel,
+  RouteplannerFout,
+} from "@/lib/ritten/google";
 import { supabaseBeheer } from "@/lib/supabase/beheer";
+import { metersNaarKm } from "@/lib/uren";
 import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -31,6 +38,7 @@ const TABELLEN = [
   "urenregels",
   "niet_inzetbare_dagen",
   "instellingen",
+  "ritten",
 ] as const;
 
 interface Uitkomst {
@@ -306,6 +314,11 @@ export default async function DiagnosePagina() {
                 },
           );
         }
+
+        // De sleutel voor de kilometers, met één echte vraag aan Google: alleen
+        // zo blijkt of de Routes API aanstaat en de sleutel wordt geaccepteerd.
+        // De sleutel zelf komt nooit op het scherm.
+        uitkomsten.push(await googleControle());
       }
     }
   }
@@ -356,4 +369,55 @@ export default async function DiagnosePagina() {
       </div>
     </main>
   );
+}
+
+/**
+ * Werkt het automatisch uitrekenen van kilometers? Vraagt de afstand op van
+ * Enschede naar Hengelo: twee plaatsnamen, geen persoonsgegevens.
+ */
+async function googleControle(): Promise<Uitkomst> {
+  const naam = "Google Maps-sleutel (kilometers)";
+  const sleutel = googleSleutel();
+
+  if (!sleutel) {
+    return {
+      naam,
+      goed: false,
+      toelichting:
+        "GOOGLE_MAPS_API_KEY staat niet bij de omgevingsvariabelen in Vercel, of deze bouw is van vóór het toevoegen. De ritten werken gewoon; alleen vult de app de kilometers dan niet zelf in. Zie PUBLICEREN.md stap 4d.",
+    };
+  }
+
+  try {
+    const meters = await afstandInMeters("Enschede", "Hengelo, Overijssel", sleutel);
+    return meters !== null
+      ? {
+          naam,
+          goed: true,
+          toelichting: `Aanwezig en geaccepteerd. Proefrit Enschede naar Hengelo: ${formatteerKm(metersNaarKm(meters))} km.`,
+        }
+      : {
+          naam,
+          goed: false,
+          toelichting: "Google antwoordt, maar vond geen route voor de proefrit.",
+        };
+  } catch (oorzaak) {
+    const status = oorzaak instanceof RouteplannerFout ? oorzaak.status : null;
+    return {
+      naam,
+      goed: false,
+      toelichting:
+        status === 403 || status === 401
+          ? "De sleutel staat er, maar Google weigert hem. Meestal staat de Routes API nog niet aan in Google Cloud, of is de sleutel beperkt tot een andere API. Zie PUBLICEREN.md stap 4d."
+          : status === 400
+            ? "Google begreep de vraag niet. Neem contact op met de ontwikkelaar."
+            : "Google gaf geen bruikbaar antwoord. Probeer het later nog eens.",
+      melding:
+        oorzaak instanceof RouteplannerFout
+          ? `HTTP ${oorzaak.status}${oorzaak.toelichting ? ` — ${oorzaak.toelichting}` : ""}`
+          : oorzaak instanceof Error
+            ? oorzaak.message
+            : String(oorzaak),
+    };
+  }
 }

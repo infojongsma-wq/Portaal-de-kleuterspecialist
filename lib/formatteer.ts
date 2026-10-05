@@ -74,6 +74,14 @@ export function formatteerBedrag(bedrag: number): string {
   });
 }
 
+/** `46.8` wordt `46,8`. Kilometers met één decimaal (SPEC.md 5.7). */
+export function formatteerKm(km: number): string {
+  return km.toLocaleString("nl-NL", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 /** `90` wordt `1 uur 30 min`, `45` wordt `45 min`. */
 export function formatteerMinuten(minuten: number): string {
   if (minuten < 60) return `${minuten} min`;

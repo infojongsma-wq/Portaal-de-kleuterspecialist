@@ -141,6 +141,23 @@ export interface Urenregel {
   bron: Urenbron;
 }
 
+/** Een gereden rit voor de kilometervergoeding (SPEC.md 4.11). */
+export interface Rit {
+  id: string;
+  medewerkerId: string;
+  datum: string;
+  doel: string;
+  vanPlaats: string;
+  naarPlaats: string;
+  /** "Vice versa": heen en terug. De kilometers tellen dan dubbel. */
+  heenEnTerug: boolean;
+  /** Kilometers van de enkele reis. */
+  kmEnkel: number;
+  /** Euro per kilometer, vastgelegd bij het opslaan van de rit. */
+  vergoedingPerKm: number;
+  aangemaaktOp: string;
+}
+
 export interface NietInzetbareDag {
   id: string;
   datum: string;

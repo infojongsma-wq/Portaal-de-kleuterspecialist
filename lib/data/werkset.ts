@@ -49,7 +49,7 @@ export interface Werkset {
  * precisie onderweg verloren gaan. Zonder deze omzetting wordt "3.50" + "1.00"
  * de tekst "3.501.00" in plaats van 4,5.
  */
-function getal(waarde: unknown): number {
+export function getal(waarde: unknown): number {
   if (waarde === null || waarde === undefined) return 0;
   return typeof waarde === "number" ? waarde : Number(waarde);
 }
