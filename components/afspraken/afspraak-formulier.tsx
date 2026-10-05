@@ -57,11 +57,11 @@ const DAGDELEN: Array<{ waarde: Dagdeel; label: string }> = [
   { waarde: "anders", label: "Anders" },
 ];
 
-// Twee groepen in het menu: wat op een school gebeurt, en waarvoor de
-// medewerker de uren zelf invult.
+// Twee groepen in het menu, zoals in SPEC.md 4.5: op school, of anders —
+// zonder school, met zelf ingevulde uren.
 const SOORTGROEPEN = [
   { label: "Op school", eigenUren: false },
-  { label: "Uren zelf invullen", eigenUren: true },
+  { label: "Anders", eigenUren: true },
 ];
 
 const STATUSLABELS: Record<Afspraak["status"], string> = {
