@@ -82,6 +82,13 @@ export interface AfspraakInvoer {
   reistijdEnkelMinuten: number | null;
   status: AfspraakStatus;
   voorbereidingGedaan: boolean;
+  /**
+   * Tellen de uren van deze afspraak mee als gewerkte tijd? Overgenomen uit de
+   * activiteitsoort. `false` bij bijvoorbeeld "Niet beschikbaar": die staat in
+   * de agenda, maar is geen werk en telt nergens mee. Ontbreekt het, dan telt
+   * de afspraak mee.
+   */
+  teltAlsWerktijd?: boolean;
 }
 
 /** Een handmatig geboekte urenregel (SPEC.md 4.7). */

@@ -48,6 +48,9 @@ export async function GET(verzoek: Request) {
     { header: "Op locatie", key: "opLocatie", width: 12 },
     { header: "Voorbereiding", key: "voorbereiding", width: 14 },
     { header: "Reistijd", key: "reistijd", width: 11 },
+    // Zelf ingevulde uren, zoals literatuurstudie: geen locatie, geen
+    // voorbereiding, geen reistijd.
+    { header: "Eigen uren", key: "eigen", width: 12 },
     { header: "Totaal uren", key: "totaal", width: 13 },
     { header: "Status", key: "status", width: 14 },
   ];
@@ -69,20 +72,24 @@ export async function GET(verzoek: Request) {
       datum: afspraak.datum
         ? formatteerDatum(afspraak.datum)
         : "Nog in te plannen",
-      school: afspraak.klant.naam,
-      plaats: afspraak.klant.plaats,
+      school: afspraak.klant?.naam ?? "",
+      plaats: afspraak.klant?.plaats ?? "",
       soort: afspraak.activiteitsoort.naam,
       titel: afspraak.titel,
       opLocatie: uren.opLocatie,
       voorbereiding: uren.voorbereiding,
       reistijd: uren.reistijd,
+      eigen: uren.eigen,
       totaal: uren.totaal,
-      status: STATUSLABELS[afspraak.status],
+      // Wie niet beschikbaar is, werkt niet; de rij staat er ter informatie.
+      status: afspraak.activiteitsoort.teltAlsWerktijd
+        ? STATUSLABELS[afspraak.status]
+        : "Telt niet mee",
     });
   }
 
   // Urenkolommen als getal met twee decimalen.
-  for (const kolom of ["opLocatie", "voorbereiding", "reistijd", "totaal"]) {
+  for (const kolom of ["opLocatie", "voorbereiding", "reistijd", "eigen", "totaal"]) {
     blad.getColumn(kolom).numFmt = "0.00";
     blad.getColumn(kolom).alignment = { horizontal: "right" };
   }
@@ -95,13 +102,14 @@ export async function GET(verzoek: Request) {
       opLocatie: { formula: `SUM(F2:F${laatste})` },
       voorbereiding: { formula: `SUM(G2:G${laatste})` },
       reistijd: { formula: `SUM(H2:H${laatste})` },
-      totaal: { formula: `SUM(I2:I${laatste})` },
+      eigen: { formula: `SUM(I2:I${laatste})` },
+      totaal: { formula: `SUM(J2:J${laatste})` },
     });
     totaalregel.font = { bold: true };
     totaalregel.border = { top: { style: "thin" } };
   }
 
-  blad.autoFilter = { from: "A1", to: `J${Math.max(blad.rowCount, 1)}` };
+  blad.autoFilter = { from: "A1", to: `K${Math.max(blad.rowCount, 1)}` };
 
   const inhoud = await werkboek.xlsx.writeBuffer();
   const bestandsnaam = `urenoverzicht-${new Date().toISOString().slice(0, 10)}.xlsx`;

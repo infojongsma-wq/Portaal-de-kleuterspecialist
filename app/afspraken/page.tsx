@@ -1,11 +1,11 @@
 import { Werkblad } from "@/components/afspraken/werkblad";
 import { Hoofdnavigatie } from "@/components/hoofdnavigatie";
 import {
+  haalActiviteitsoorten,
   haalAfsprakenMetContext,
   haalContactpersonen,
   haalKlanten,
   haalNietInzetbareDagen,
-  haalTrainingsoorten,
   huidigeMedewerker,
 } from "@/lib/data/queries";
 
@@ -32,7 +32,7 @@ export default async function AfsprakenPagina() {
         <Werkblad
           klanten={await haalKlanten()}
           contactpersonen={await haalContactpersonen()}
-          trainingsoorten={await haalTrainingsoorten()}
+          soorten={await haalActiviteitsoorten()}
           afspraken={await haalAfsprakenMetContext(medewerker.id)}
           nietInzetbareDagen={await haalNietInzetbareDagen()}
         />

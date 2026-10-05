@@ -22,13 +22,14 @@ import type {
 export function Werkblad({
   klanten,
   contactpersonen,
-  trainingsoorten,
+  soorten,
   afspraken,
   nietInzetbareDagen,
 }: {
   klanten: Klant[];
   contactpersonen: Contactpersoon[];
-  trainingsoorten: Activiteitsoort[];
+  /** Alle actieve soorten: trainingen én soorten met zelf ingevulde uren. */
+  soorten: Activiteitsoort[];
   afspraken: AfspraakMetContext[];
   nietInzetbareDagen: NietInzetbareDag[];
 }) {
@@ -52,6 +53,10 @@ export function Werkblad({
       )
     : [];
 
+  // Aan een school hang je alleen trainingen en observaties, geen
+  // literatuurstudie of "niet beschikbaar".
+  const trainingsoorten = soorten.filter((soort) => !soort.handmatigeUren);
+
   // Alleen afspraken met een datum kunnen in de agenda staan.
   const inDeAgenda = afspraken.filter((afspraak) => afspraak.datum);
 
@@ -61,7 +66,7 @@ export function Werkblad({
         <AfspraakFormulier
           klanten={klanten}
           contactpersonen={contactpersonen}
-          trainingsoorten={trainingsoorten}
+          soorten={soorten}
           afspraak={gekozenAfspraak}
           gekozenDatum={gekozenDatum}
           onNieuw={() => {

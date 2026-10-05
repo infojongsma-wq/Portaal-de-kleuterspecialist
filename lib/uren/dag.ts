@@ -63,7 +63,14 @@ export interface DagUitkomst {
 export function berekenDag(invoer: DagInvoer): DagUitkomst {
   const telwijze = invoer.telwijze ?? "gepland";
 
-  const urenOpLocatie = invoer.afspraken
+  // Afspraken die geen werk zijn, zoals "niet beschikbaar", doen nergens mee:
+  // niet in de uren, niet in de reistijd en niet in de waarschuwing voor te
+  // lange dagen.
+  const afspraken = invoer.afspraken.filter(
+    (afspraak) => afspraak.teltAlsWerktijd !== false,
+  );
+
+  const urenOpLocatie = afspraken
     .filter(
       (afspraak) =>
         afspraak.datum === invoer.datum &&
@@ -71,7 +78,7 @@ export function berekenDag(invoer: DagInvoer): DagUitkomst {
     )
     .reduce((totaal, afspraak) => totaal + afspraak.urenOpLocatie, 0);
 
-  const urenVoorbereiding = invoer.afspraken
+  const urenVoorbereiding = afspraken
     .filter(
       (afspraak) =>
         afspraak.voorbereidingDatum === invoer.datum &&
@@ -84,7 +91,7 @@ export function berekenDag(invoer: DagInvoer): DagUitkomst {
     .reduce((totaal, afspraak) => totaal + afspraak.urenVoorbereiding, 0);
 
   // Reistijd hoort bij de dag van het bezoek, niet bij de voorbereidingsdag.
-  const reizen = invoer.afspraken.filter(
+  const reizen = afspraken.filter(
     (afspraak) =>
       afspraak.datum === invoer.datum &&
       teltReistijd(afspraak.status, telwijze) &&

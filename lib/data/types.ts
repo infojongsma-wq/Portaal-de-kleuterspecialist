@@ -83,14 +83,25 @@ export interface Activiteitsoort {
   urenVoorbereiding: number;
   kleur: string;
   volgorde: number;
-  /** `true` bij "Anders": de gebruiker vult de uren zelf in. */
+  /**
+   * `true` als de medewerker de uren zelf invult, zoals bij Literatuurstudie.
+   * Zo'n afspraak heeft geen school en geen reistijd.
+   */
   handmatigeUren: boolean;
+  /** Bij handmatige uren: onder welke categorie die uren vallen. */
+  urencategorie: UrenCategorie | null;
+  /**
+   * Tellen de uren mee als gewerkte tijd? Uit bij "Niet beschikbaar": die staat
+   * in de agenda, maar is geen werk.
+   */
+  teltAlsWerktijd: boolean;
   actief: boolean;
 }
 
 export interface Afspraak {
   id: string;
-  klantId: string;
+  /** `null` bij soorten zonder school, zoals literatuurstudie. */
+  klantId: string | null;
   contactpersoonId: string | null;
   medewerkerId: string;
   activiteitsoortId: string;
@@ -162,7 +173,8 @@ export interface AfgeleideUrenregel {
 
 /** Een afspraak met de gegevens die de schermen erbij nodig hebben. */
 export interface AfspraakMetContext extends Afspraak {
-  klant: Klant;
+  /** `null` bij soorten zonder school, zoals literatuurstudie. */
+  klant: Klant | null;
   contactpersoon: Contactpersoon | null;
   activiteitsoort: Activiteitsoort;
 }

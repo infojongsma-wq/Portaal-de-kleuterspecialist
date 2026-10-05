@@ -68,7 +68,10 @@ function binnenPeriode(
   return datum !== null && datum >= vanaf && datum <= totEnMet;
 }
 
-export function naarAfspraakInvoer(afspraak: Afspraak): AfspraakInvoer {
+export function naarAfspraakInvoer(
+  afspraak: Afspraak,
+  soort?: Activiteitsoort,
+): AfspraakInvoer {
   return {
     id: afspraak.id,
     datum: afspraak.datum,
@@ -78,7 +81,14 @@ export function naarAfspraakInvoer(afspraak: Afspraak): AfspraakInvoer {
     reistijdEnkelMinuten: afspraak.reistijdEnkelMinuten,
     status: afspraak.status,
     voorbereidingGedaan: afspraak.voorbereidingGedaan,
+    teltAlsWerktijd: soort?.teltAlsWerktijd ?? true,
   };
+}
+
+function soortVan(gegevens: Werkset, afspraak: Afspraak) {
+  return gegevens.activiteitsoorten.find(
+    (soort) => soort.id === afspraak.activiteitsoortId,
+  );
 }
 
 export function naarUrenregelInvoer(regel: Urenregel): UrenregelInvoer {
@@ -123,11 +133,14 @@ function metContext(
   afspraken: Afspraak[],
 ): AfspraakMetContext[] {
   return afspraken.flatMap((afspraak) => {
-    const klant = gegevens.klanten.find((k) => k.id === afspraak.klantId);
-    const activiteitsoort = gegevens.activiteitsoorten.find(
-      (s) => s.id === afspraak.activiteitsoortId,
-    );
-    if (!klant || !activiteitsoort) return [];
+    // Geen school is geen fout: literatuurstudie of "niet beschikbaar" hebben
+    // er geen. Alleen een afspraak met een school die niet (meer) zichtbaar is,
+    // valt weg.
+    const klant = afspraak.klantId
+      ? (gegevens.klanten.find((k) => k.id === afspraak.klantId) ?? null)
+      : null;
+    const activiteitsoort = soortVan(gegevens, afspraak);
+    if (!activiteitsoort || (afspraak.klantId && !klant)) return [];
 
     return [
       {
@@ -145,9 +158,23 @@ function metContext(
 
 function urenVanAfspraakMet(
   instellingen: Instellingen,
-  afspraak: Afspraak,
+  afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
   telwijze: Telwijze,
 ) {
+  // Afspraken die geen werk zijn, zoals "niet beschikbaar", tellen nergens mee.
+  if (afspraak.activiteitsoort && !afspraak.activiteitsoort.teltAlsWerktijd) {
+    return { opLocatie: 0, voorbereiding: 0, reistijd: 0, eigen: 0, totaal: 0 };
+  }
+
+  // Zelf ingevulde uren, zoals literatuurstudie, zijn geen uren op locatie.
+  // Ze staan in de database wel in die kolom, maar horen in een eigen vak.
+  if (afspraak.activiteitsoort?.handmatigeUren) {
+    const eigen = teltLocatieUren(afspraak.status, telwijze)
+      ? afspraak.urenOpLocatie
+      : 0;
+    return { opLocatie: 0, voorbereiding: 0, reistijd: 0, eigen, totaal: eigen };
+  }
+
   const opLocatie = teltLocatieUren(afspraak.status, telwijze)
     ? afspraak.urenOpLocatie
     : 0;
@@ -170,6 +197,7 @@ function urenVanAfspraakMet(
     opLocatie,
     voorbereiding,
     reistijd,
+    eigen: 0,
     totaal: opLocatie + voorbereiding + reistijd,
   };
 }
@@ -214,9 +242,9 @@ export async function haalAlleActiviteitsoorten(): Promise<Activiteitsoort[]> {
 }
 
 /**
- * De soorten die de medewerker kan kiezen: alleen die met vaste uren. Soorten
- * met `handmatigeUren` vragen om zelf ingevulde uren, en die velden ziet de
- * medewerker niet meer.
+ * De soorten die je met een school afspreekt: alleen die met vaste uren.
+ * Soorten met `handmatigeUren`, zoals Literatuurstudie, horen niet bij een
+ * school; die kiest de medewerker alleen in het afspraakformulier.
  */
 export async function haalTrainingsoorten(): Promise<Activiteitsoort[]> {
   return (await haalActiviteitsoorten()).filter(
@@ -364,7 +392,7 @@ export async function urenInPeriode(
   const { instellingen } = gegevens;
 
   const afspraken = afsprakenVan(gegevens, medewerkerId)
-    .map(naarAfspraakInvoer)
+    .map((afspraak) => naarAfspraakInvoer(afspraak, soortVan(gegevens, afspraak)))
     .filter(
       (afspraak) =>
         binnenPeriode(afspraak.datum, vanaf, totEnMet) ||
@@ -408,6 +436,31 @@ export async function urenregelsInPeriode(
   for (const afspraak of afspraken) {
     const klant = klanten.find((k) => k.id === afspraak.klantId);
     const omschrijving = `${afspraak.titel}${klant ? ` — ${klant.naam}` : ""}`;
+    const soort = soortVan(gegevens, afspraak);
+
+    // Wat geen werk is, zoals "niet beschikbaar", komt niet in de urenlijst.
+    if (soort && !soort.teltAlsWerktijd) continue;
+
+    // Zelf ingevulde uren, zoals literatuurstudie: één regel, onder de
+    // categorie die bij de soort hoort. Geen voorbereiding, geen reistijd.
+    if (soort?.handmatigeUren) {
+      if (
+        binnenPeriode(afspraak.datum, vanaf, totEnMet) &&
+        teltLocatieUren(afspraak.status, telwijze) &&
+        afspraak.urenOpLocatie > 0
+      ) {
+        regels.push({
+          id: `${afspraak.id}-eigen`,
+          datum: afspraak.datum!,
+          categorie: soort.urencategorie ?? "overig",
+          uren: afspraak.urenOpLocatie,
+          toelichting: afspraak.titel,
+          bron: "automatisch",
+          afspraakId: afspraak.id,
+        });
+      }
+      continue;
+    }
 
     if (
       binnenPeriode(afspraak.datum, vanaf, totEnMet) &&
@@ -644,7 +697,7 @@ export async function jaarnormBalans(
  * keer per dag — kijk voor het dagtotaal bij `urenInPeriode`.
  */
 export async function urenVanAfspraak(
-  afspraak: Afspraak,
+  afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
   telwijze: Telwijze = "gepland",
 ) {
   return urenVanAfspraakMet(await haalInstellingen(), afspraak, telwijze);
@@ -656,7 +709,7 @@ export async function urenVanAfspraak(
  */
 export function urenVanAfspraakSync(
   instellingen: Instellingen,
-  afspraak: Afspraak,
+  afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
   telwijze: Telwijze = "gepland",
 ) {
   return urenVanAfspraakMet(instellingen, afspraak, telwijze);

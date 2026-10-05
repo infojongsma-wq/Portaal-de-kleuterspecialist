@@ -130,6 +130,10 @@ function naarActiviteitsoort(rij: Rij): Activiteitsoort {
     kleur: rij.kleur as string,
     volgorde: getal(rij.volgorde),
     handmatigeUren: Boolean(rij.handmatige_uren),
+    urencategorie: (rij.urencategorie as Activiteitsoort["urencategorie"]) ?? null,
+    // Ontbreekt de kolom nog (migratie niet gedraaid), dan telt alles mee —
+    // zoals het altijd deed.
+    teltAlsWerktijd: rij.telt_als_werktijd !== false,
     actief: Boolean(rij.actief),
   };
 }
@@ -137,7 +141,7 @@ function naarActiviteitsoort(rij: Rij): Activiteitsoort {
 function naarAfspraak(rij: Rij): Afspraak {
   return {
     id: rij.id as string,
-    klantId: rij.klant_id as string,
+    klantId: (rij.klant_id as string) ?? null,
     contactpersoonId: (rij.contactpersoon_id as string) ?? null,
     medewerkerId: rij.medewerker_id as string,
     activiteitsoortId: rij.activiteitsoort_id as string,

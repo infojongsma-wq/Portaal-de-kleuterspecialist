@@ -231,3 +231,98 @@ describe("afspraken die nog ingepland moeten worden", () => {
     expect(totaalUren(dagen)).toBe(6.0);
   });
 });
+
+describe("afspraken met zelf ingevulde uren", () => {
+  // Literatuurstudie: de medewerker vult 2,5 uur in. Die uren staan als
+  // `urenOpLocatie`, zonder voorbereiding en zonder reistijd.
+  const literatuurstudie = maakAfspraak({
+    id: "literatuur",
+    datum: "2027-03-10",
+    urenOpLocatie: 2.5,
+    urenVoorbereiding: 0,
+    reistijdEnkelMinuten: null,
+    teltAlsWerktijd: true,
+  });
+
+  // Niet beschikbaar: staat in de agenda met 4 uur, maar is geen werk.
+  const nietBeschikbaar = maakAfspraak({
+    id: "niet-beschikbaar",
+    datum: "2027-03-10",
+    urenOpLocatie: 4.0,
+    urenVoorbereiding: 0,
+    reistijdEnkelMinuten: null,
+    teltAlsWerktijd: false,
+  });
+
+  it("telt de uren van literatuurstudie mee", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [literatuurstudie],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dag.totaalUren).toBe(2.5);
+    expect(dag.reistijdUren).toBe(0);
+  });
+
+  it("telt niet beschikbaar nergens mee", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [nietBeschikbaar],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dag.urenOpLocatie).toBe(0);
+    expect(dag.totaalUren).toBe(0);
+  });
+
+  it("laat niet beschikbaar de andere uren van die dag ongemoeid", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [
+        literatuurstudie,
+        nietBeschikbaar,
+        maakAfspraak({ id: "training", datum: "2027-03-10" }),
+      ],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    // 2,5 literatuur + 3,0 + 3,0 training; de 4 uur niet beschikbaar niet.
+    expect(dag.totaalUren).toBe(8.5);
+  });
+
+  it("geeft geen waarschuwing voor lange dagen door niet-beschikbare uren", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [
+        maakAfspraak({ id: "training", datum: "2027-03-10" }),
+        maakAfspraak({
+          id: "niet-beschikbaar-lang",
+          datum: "2027-03-10",
+          urenOpLocatie: 10,
+          urenVoorbereiding: 0,
+          teltAlsWerktijd: false,
+        }),
+      ],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dag.totaalUren).toBe(6.0);
+    expect(dag.overschrijdtMaximum).toBe(false);
+  });
+
+  it("telt een afspraak zonder die eigenschap gewoon mee, zoals altijd", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [maakAfspraak({ datum: "2027-03-10" })],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+    });
+
+    expect(dag.totaalUren).toBe(6.0);
+  });
+});

@@ -251,15 +251,16 @@ export default async function BeheerPagina() {
         </Card>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          {/* Soorten trainingen */}
+          {/* Soorten afspraken */}
           <Card className="p-0">
             <CardHeader>
-              <CardTitle>Soorten trainingen</CardTitle>
+              <CardTitle>Soorten afspraken</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Deze uren bepalen wat een afspraak oplevert. Ze staan nergens in
-                de code, en de medewerker vult ze niet in. Een wijziging geldt
-                vooruit: bestaande afspraken houden de uren waarmee ze zijn
-                vastgelegd.
+                Bij een training of observatie bepalen deze uren wat een
+                afspraak oplevert; de medewerker vult ze niet in. Een wijziging
+                geldt vooruit: bestaande afspraken houden de uren waarmee ze
+                zijn vastgelegd. Bij soorten als Literatuurstudie vult de
+                medewerker de uren zelf in.
               </p>
             </CardHeader>
             <SoortenBeheer soorten={soorten} />

@@ -175,11 +175,19 @@ export default async function OverzichtPagina({
                       )}
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium">{afspraak.klant.naam}</span>
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {afspraak.klant.plaats}
-                      </span>
+                      {afspraak.klant ? (
+                        <>
+                          <span className="font-medium">
+                            {afspraak.klant.naam}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · {afspraak.klant.plaats}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="flex items-center gap-2 whitespace-nowrap">
@@ -193,7 +201,13 @@ export default async function OverzichtPagina({
                     </TableCell>
                     <TableCell>{afspraak.titel}</TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatteerUren(uren.totaal)}
+                      {afspraak.activiteitsoort.teltAlsWerktijd ? (
+                        formatteerUren(uren.totaal)
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          telt niet mee
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge

@@ -60,7 +60,9 @@ export function Agenda({
         return [
           {
             id: afspraak.id,
-            title: `${afspraak.klant.naam} — ${afspraak.titel}`,
+            title: afspraak.klant
+              ? `${afspraak.klant.naam} — ${afspraak.titel}`
+              : afspraak.titel,
             start: heeftTijd
               ? `${afspraak.datum}T${afspraak.starttijd}`
               : afspraak.datum,

@@ -31,7 +31,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -43,8 +45,9 @@ import type {
   Dagdeel,
   Klant,
 } from "@/lib/data/types";
+import { CATEGORIELABELS } from "@/lib/uren";
 import {
-  afspraakSchema,
+  afspraakSchemaVoor,
   type AfspraakFormulier,
 } from "@/lib/validatie/afspraak";
 
@@ -52,6 +55,13 @@ const DAGDELEN: Array<{ waarde: Dagdeel; label: string }> = [
   { waarde: "ochtend", label: "Ochtend" },
   { waarde: "middag", label: "Middag" },
   { waarde: "anders", label: "Anders" },
+];
+
+// Twee groepen in het menu: wat op een school gebeurt, en waarvoor de
+// medewerker de uren zelf invult.
+const SOORTGROEPEN = [
+  { label: "Op school", eigenUren: false },
+  { label: "Uren zelf invullen", eigenUren: true },
 ];
 
 const STATUSLABELS: Record<Afspraak["status"], string> = {
@@ -75,6 +85,7 @@ function legeWaarden(datum: string): AfspraakFormulier {
     eindtijd: "",
     afsprakenMetKlant: "",
     notitie: "",
+    uren: "",
     voltooid: false,
   };
 }
@@ -82,7 +93,7 @@ function legeWaarden(datum: string): AfspraakFormulier {
 function naarFormulier(afspraak: Afspraak): AfspraakFormulier {
   return {
     id: afspraak.id,
-    klantId: afspraak.klantId,
+    klantId: afspraak.klantId ?? "",
     contactpersoonId: afspraak.contactpersoonId ?? "",
     activiteitsoortId: afspraak.activiteitsoortId,
     titel: afspraak.titel,
@@ -93,6 +104,8 @@ function naarFormulier(afspraak: Afspraak): AfspraakFormulier {
     eindtijd: afspraak.eindtijd ?? "",
     afsprakenMetKlant: afspraak.afsprakenMetKlant ?? "",
     notitie: afspraak.notitie ?? "",
+    // Alleen zichtbaar bij zelf ingevulde uren; zie `kiesSoort`.
+    uren: afspraak.urenOpLocatie > 0 ? String(afspraak.urenOpLocatie) : "",
     voltooid: afspraak.status === "voltooid",
   };
 }
@@ -100,21 +113,25 @@ function naarFormulier(afspraak: Afspraak): AfspraakFormulier {
 /**
  * Afspraakformulier, linkerkolom van het hoofdscherm.
  *
- * De medewerker vult alleen in wát er gebeurt en wanneer. De uren op locatie,
- * de voorbereidingsuren en de reistijd worden serverside afgeleid uit de soort
- * training en de school; ze staan hier bewust niet.
+ * Bij een training of observatie vult de medewerker alleen in wát er gebeurt
+ * en wanneer. De uren op locatie, de voorbereidingsuren en de reistijd worden
+ * serverside afgeleid uit de soort en de school; ze staan hier bewust niet.
+ *
+ * Bij Literatuurstudie, Overig en Niet beschikbaar is er geen school, en vult
+ * de medewerker het aantal uren zelf in.
  */
 export function AfspraakFormulier({
   klanten,
   contactpersonen,
-  trainingsoorten,
+  soorten,
   afspraak,
   gekozenDatum,
   onNieuw,
 }: {
   klanten: Klant[];
   contactpersonen: Contactpersoon[];
-  trainingsoorten: Activiteitsoort[];
+  /** Alle actieve soorten, met en zonder school. */
+  soorten: Activiteitsoort[];
   afspraak: Afspraak | null;
   gekozenDatum: string | null;
   onNieuw: () => void;
@@ -132,7 +149,14 @@ export function AfspraakFormulier({
     watch,
     formState: { errors, isSubmitting },
   } = useForm<AfspraakFormulier>({
-    resolver: zodResolver(afspraakSchema),
+    // Welke velden verplicht zijn hangt af van de gekozen soort; de server
+    // controleert het daarna nog eens met de soort uit de database.
+    resolver: (waarden, context, opties) =>
+      zodResolver(
+        afspraakSchemaVoor(
+          soorten.find((soort) => soort.id === waarden.activiteitsoortId),
+        ),
+      )(waarden, context, opties),
     defaultValues: afspraak
       ? naarFormulier(afspraak)
       : legeWaarden(gekozenDatum ?? ""),
@@ -151,6 +175,12 @@ export function AfspraakFormulier({
   const activiteitsoortId = watch("activiteitsoortId");
   const titel = watch("titel");
 
+  const gekozenSoort = soorten.find((soort) => soort.id === activiteitsoortId);
+  // Geen school, wel zelf ingevulde uren: Literatuurstudie, Overig, Niet
+  // beschikbaar.
+  const eigenUren = gekozenSoort?.handmatigeUren ?? false;
+  const teltMee = gekozenSoort?.teltAlsWerktijd ?? true;
+
   const contactpersonenVanKlant = contactpersonen.filter(
     (persoon) => persoon.klantId === klantId,
   );
@@ -168,11 +198,21 @@ export function AfspraakFormulier({
   }
 
   function kiesSoort(soortId: string) {
+    const vorige = gekozenSoort;
+    const soort = soorten.find((s) => s.id === soortId);
     setValue("activiteitsoortId", soortId, { shouldValidate: true });
+
     // De naam van de soort is een bruikbare werktitel zolang er nog niets
     // eigens is ingevuld.
-    const soort = trainingsoorten.find((s) => s.id === soortId);
-    if (soort && !titel.trim()) setValue("titel", soort.naam);
+    if (soort && (!titel.trim() || titel === vorige?.naam)) {
+      setValue("titel", soort.naam);
+    }
+
+    // De vaste uren van een training horen niet in het veld voor zelf
+    // ingevulde uren terecht te komen.
+    if (vorige && soort && vorige.handmatigeUren !== soort.handmatigeUren) {
+      setValue("uren", "");
+    }
   }
 
   function wisselDagdeel(waarde: Dagdeel, aan: boolean) {
@@ -231,83 +271,101 @@ export function AfspraakFormulier({
         ) : null}
       </div>
 
-      {/* School */}
+      {/* Soort afspraak — bepaalt welke velden er verder nodig zijn */}
       <div className="grid gap-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <Label htmlFor="klant">School</Label>
-          <NieuweKlantDialoog onToegevoegd={kiesKlant} />
-        </div>
-        <KlantKiezer
-          klanten={klanten}
-          waarde={klantId}
-          onKies={kiesKlant}
-          foutmelding={errors.klantId?.message}
-        />
-        <Fout melding={errors.klantId?.message} />
-      </div>
-
-      {/* Contactpersoon */}
-      <div className="grid gap-1.5">
-        <Label htmlFor="contactpersoon">Contactpersoon</Label>
-        <Controller
-          control={control}
-          name="contactpersoonId"
-          render={({ field }) => (
-            <Select
-              value={field.value || ""}
-              onValueChange={field.onChange}
-              disabled={contactpersonenVanKlant.length === 0}
-            >
-              <SelectTrigger id="contactpersoon">
-                <SelectValue
-                  placeholder={
-                    klantId
-                      ? "Geen contactpersoon bekend"
-                      : "Kies eerst een school"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {contactpersonenVanKlant.map((persoon) => (
-                  <SelectItem key={persoon.id} value={persoon.id}>
-                    {persoon.naam}
-                    {persoon.functie ? ` — ${persoon.functie}` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        />
-      </div>
-
-      {/* Soort training */}
-      <div className="grid gap-1.5">
-        <Label htmlFor="activiteitsoort">Soort training</Label>
+        <Label htmlFor="activiteitsoort">Soort afspraak</Label>
         <Select value={activiteitsoortId} onValueChange={kiesSoort}>
           <SelectTrigger id="activiteitsoort">
-            <SelectValue placeholder="Kies een soort training" />
+            <SelectValue placeholder="Kies een soort afspraak" />
           </SelectTrigger>
           <SelectContent>
-            {trainingsoorten.map((soort) => (
-              <SelectItem key={soort.id} value={soort.id}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="size-2.5 rounded-full"
-                    style={{ backgroundColor: soort.kleur }}
-                    aria-hidden
-                  />
-                  {soort.naam}
-                </span>
-              </SelectItem>
-            ))}
+            {SOORTGROEPEN.map((groep) => {
+              const inGroep = soorten.filter(
+                (soort) => soort.handmatigeUren === groep.eigenUren,
+              );
+              if (inGroep.length === 0) return null;
+              return (
+                <SelectGroup key={groep.label}>
+                  <SelectLabel>{groep.label}</SelectLabel>
+                  {inGroep.map((soort) => (
+                    <SelectItem key={soort.id} value={soort.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="size-2.5 rounded-full"
+                          style={{ backgroundColor: soort.kleur }}
+                          aria-hidden
+                        />
+                        {soort.naam}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              );
+            })}
           </SelectContent>
         </Select>
         <Fout melding={errors.activiteitsoortId?.message} />
       </div>
 
-      {/* Naam van de training */}
+      {/* School en contactpersoon: alleen bij een training of observatie */}
+      {!eigenUren ? (
+        <>
+          {/* School */}
+          <div className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="klant">School</Label>
+              <NieuweKlantDialoog onToegevoegd={kiesKlant} />
+            </div>
+            <KlantKiezer
+              klanten={klanten}
+              waarde={klantId}
+              onKies={kiesKlant}
+              foutmelding={errors.klantId?.message}
+            />
+            <Fout melding={errors.klantId?.message} />
+          </div>
+
+          {/* Contactpersoon */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="contactpersoon">Contactpersoon</Label>
+            <Controller
+              control={control}
+              name="contactpersoonId"
+              render={({ field }) => (
+                <Select
+                  value={field.value || ""}
+                  onValueChange={field.onChange}
+                  disabled={contactpersonenVanKlant.length === 0}
+                >
+                  <SelectTrigger id="contactpersoon">
+                    <SelectValue
+                      placeholder={
+                        klantId
+                          ? "Geen contactpersoon bekend"
+                          : "Kies eerst een school"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contactpersonenVanKlant.map((persoon) => (
+                      <SelectItem key={persoon.id} value={persoon.id}>
+                        {persoon.naam}
+                        {persoon.functie ? ` — ${persoon.functie}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
+        </>
+      ) : null}
+
+      {/* Naam van de training, of een omschrijving */}
       <div className="grid gap-1.5">
-        <Label htmlFor="titel">Naam van de training</Label>
+        <Label htmlFor="titel">
+          {eigenUren ? "Omschrijving" : "Naam van de training"}
+        </Label>
         <Input id="titel" autoComplete="off" {...register("titel")} />
         <Fout melding={errors.titel?.message} />
       </div>
@@ -322,12 +380,44 @@ export function AfspraakFormulier({
             setValue("datum", nieuweDatum, { shouldValidate: true })
           }
         />
-        <p className="text-xs text-muted-foreground">
-          Laat leeg als de training wel is afgesproken maar nog niet is
-          ingepland.
-        </p>
+        {!eigenUren ? (
+          <p className="text-xs text-muted-foreground">
+            Laat leeg als de training wel is afgesproken maar nog niet is
+            ingepland.
+          </p>
+        ) : null}
         <Fout melding={errors.datum?.message} />
       </div>
+
+      {/* Zelf ingevulde uren */}
+      {eigenUren ? (
+        <div className="grid gap-1.5">
+          <Label htmlFor="uren">
+            Aantal uren
+            {!teltMee ? (
+              <span className="ml-2 font-normal text-muted-foreground">
+                niet verplicht
+              </span>
+            ) : null}
+          </Label>
+          <Input
+            id="uren"
+            type="number"
+            inputMode="decimal"
+            step="0.25"
+            min={0.25}
+            max={24}
+            className="w-32"
+            {...register("uren")}
+          />
+          <p className="text-xs text-muted-foreground">
+            {teltMee
+              ? `Telt mee onder "${CATEGORIELABELS[gekozenSoort?.urencategorie ?? "overig"]}" zodra je het als gedaan afvinkt.`
+              : "Telt niet mee als gewerkte tijd. Het staat alleen in je agenda."}
+          </p>
+          <Fout melding={errors.uren?.message} />
+        </div>
+      ) : null}
 
       {/* Dagdeel */}
       <fieldset className="grid gap-2">
@@ -386,15 +476,17 @@ export function AfspraakFormulier({
       </div>
 
       {/* Vrije tekstvelden */}
-      <div className="grid gap-1.5">
-        <Label htmlFor="afsprakenMetKlant">Afspraken met de school</Label>
-        <Textarea
-          id="afsprakenMetKlant"
-          rows={3}
-          {...register("afsprakenMetKlant")}
-        />
-        <PrivacyWaarschuwing />
-      </div>
+      {!eigenUren ? (
+        <div className="grid gap-1.5">
+          <Label htmlFor="afsprakenMetKlant">Afspraken met de school</Label>
+          <Textarea
+            id="afsprakenMetKlant"
+            rows={3}
+            {...register("afsprakenMetKlant")}
+          />
+          <PrivacyWaarschuwing />
+        </div>
+      ) : null}
 
       <div className="grid gap-1.5">
         <Label htmlFor="notitie">Notitie of memo</Label>
@@ -402,23 +494,25 @@ export function AfspraakFormulier({
         <PrivacyWaarschuwing />
       </div>
 
-      {/* Vinkje */}
-      <div className="flex items-center gap-2">
-        <Controller
-          control={control}
-          name="voltooid"
-          render={({ field }) => (
-            <Checkbox
-              id="voltooid"
-              checked={field.value}
-              onCheckedChange={(aan) => field.onChange(aan === true)}
-            />
-          )}
-        />
-        <Label htmlFor="voltooid" className="font-normal">
-          Training gedaan
-        </Label>
-      </div>
+      {/* Vinkje — niet bij iets wat geen werk is, zoals niet beschikbaar */}
+      {teltMee ? (
+        <div className="flex items-center gap-2">
+          <Controller
+            control={control}
+            name="voltooid"
+            render={({ field }) => (
+              <Checkbox
+                id="voltooid"
+                checked={field.value}
+                onCheckedChange={(aan) => field.onChange(aan === true)}
+              />
+            )}
+          />
+          <Label htmlFor="voltooid" className="font-normal">
+            {eigenUren ? "Gedaan" : "Training gedaan"}
+          </Label>
+        </div>
+      ) : null}
 
       {melding ? (
         <p className="text-sm text-muted-foreground" role="status">
@@ -432,7 +526,9 @@ export function AfspraakFormulier({
           {isSubmitting ? "Bezig met opslaan…" : "Gegevens opslaan"}
         </Button>
 
-        {afspraak && afspraak.status !== "geannuleerd" ? (
+        {/* Annuleren gaat over de voorbereiding; die is er bij zelf
+            ingevulde uren niet. Verwijderen volstaat dan. */}
+        {afspraak && !eigenUren && afspraak.status !== "geannuleerd" ? (
           <Button
             type="button"
             variant="outline"

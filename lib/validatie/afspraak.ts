@@ -18,62 +18,132 @@ const vrijeTekst = z
   .max(2000, "Deze tekst is te lang; maximaal 2000 tekens.");
 
 /**
+ * Leest een aantal uren zoals het invoerveld het aanlevert: "2,5" en "2.5"
+ * worden allebei 2,5. Een leeg veld geeft `null`, onzin geeft `NaN`.
+ */
+export function leesUren(tekst: string | undefined): number | null {
+  const schoon = (tekst ?? "").trim().replace(",", ".");
+  if (schoon === "") return null;
+  return Number(schoon);
+}
+
+/** Wat het formulier van de gekozen soort moet weten. */
+export interface SoortRegels {
+  /** De medewerker vult de uren zelf in; er hoort geen school bij. */
+  handmatigeUren: boolean;
+  /** De uren tellen mee als gewerkte tijd. Uit bij "Niet beschikbaar". */
+  teltAlsWerktijd: boolean;
+}
+
+/**
  * Het afspraakformulier van de medewerker.
  *
- * De uren en de reistijd staan hier bewust niet in: die leidt de server af uit
- * de activiteitsoort en de school. Wat de browser daarover zou meesturen wordt
- * genegeerd, zodat een medewerker de urenregistratie niet kan sturen.
+ * Bij een training of observatie staan de uren en de reistijd hier bewust niet
+ * in: die leidt de server af uit de activiteitsoort en de school. Wat de
+ * browser daarover zou meesturen wordt genegeerd, zodat een medewerker de
+ * urenregistratie niet kan sturen.
  *
- * De datum mag leeg zijn. Dat betekent "nog in te plannen": met de school
- * afgesproken, maar er staat nog geen dag voor.
+ * Bij soorten als Literatuurstudie, Overig en Niet beschikbaar vult de
+ * medewerker de uren wél zelf in. Daar hoort geen school bij, maar wel een
+ * datum.
+ *
+ * Welke velden verplicht zijn hangt dus af van de soort. Die geeft je mee: in
+ * de browser de gekozen soort, op de server opnieuw de soort uit de database.
+ *
+ * De datum mag bij trainingen leeg zijn. Dat betekent "nog in te plannen": met
+ * de school afgesproken, maar er staat nog geen dag voor.
  */
-export const afspraakSchema = z
-  .object({
-    id: z.string().optional(),
-    klantId: z.string().min(1, "Kies een school."),
-    contactpersoonId: z.string().optional(),
-    activiteitsoortId: z.string().min(1, "Kies een soort training."),
-    titel: z
-      .string()
-      .trim()
-      .min(1, "Vul de naam van de training in.")
-      .max(200, "De naam is te lang; maximaal 200 tekens."),
-    datum: z.union([isoDatum, z.literal("")]),
-    dagdelen: z
-      .array(z.enum(["ochtend", "middag", "anders"]))
-      .min(1, "Kies minstens één dagdeel."),
-    andersOmschrijving: z.string().trim().max(200).optional(),
-    starttijd: z.string().optional(),
-    eindtijd: z.string().optional(),
-    afsprakenMetKlant: vrijeTekst.optional(),
-    notitie: vrijeTekst.optional(),
-    voltooid: z.boolean(),
-  })
-  // "Anders, namelijk" is verplicht zodra "Anders" is aangevinkt.
-  .refine(
-    (waarden) =>
-      !waarden.dagdelen.includes("anders") ||
-      (waarden.andersOmschrijving?.length ?? 0) > 0,
-    {
-      message: "Vul in wat de afwijkende tijd is.",
-      path: ["andersOmschrijving"],
-    },
-  )
-  .refine(
-    (waarden) =>
-      !waarden.starttijd ||
-      !waarden.eindtijd ||
-      waarden.eindtijd > waarden.starttijd,
-    {
-      message: "De eindtijd moet na de starttijd liggen.",
-      path: ["eindtijd"],
-    },
-  )
-  // Zonder datum valt er niets af te vinken als voltooid.
-  .refine((waarden) => !waarden.voltooid || waarden.datum !== "", {
-    message: "Vul eerst een datum in voordat je de training afvinkt.",
-    path: ["datum"],
-  });
+export function afspraakSchemaVoor(soort?: SoortRegels) {
+  const eigenUren = soort?.handmatigeUren ?? false;
+  // Bij "Niet beschikbaar" mag het aantal uren leeg blijven: het telt niet mee.
+  const urenVerplicht = eigenUren && (soort?.teltAlsWerktijd ?? true);
+
+  return (
+    z
+      .object({
+        id: z.string().optional(),
+        // Leeg bij soorten zonder school; zie de controle hieronder.
+        klantId: z.string(),
+        contactpersoonId: z.string().optional(),
+        activiteitsoortId: z.string().min(1, "Kies een soort afspraak."),
+        titel: z
+          .string()
+          .trim()
+          .min(
+            1,
+            eigenUren
+              ? "Vul een omschrijving in."
+              : "Vul de naam van de training in.",
+          )
+          .max(200, "Deze tekst is te lang; maximaal 200 tekens."),
+        datum: z.union([isoDatum, z.literal("")]),
+        dagdelen: z
+          .array(z.enum(["ochtend", "middag", "anders"]))
+          .min(1, "Kies minstens één dagdeel."),
+        andersOmschrijving: z.string().trim().max(200).optional(),
+        starttijd: z.string().optional(),
+        eindtijd: z.string().optional(),
+        afsprakenMetKlant: vrijeTekst.optional(),
+        notitie: vrijeTekst.optional(),
+        // Alleen bij zelf ingevulde uren; als tekst, zie `leesUren`.
+        uren: z.string().optional(),
+        voltooid: z.boolean(),
+      })
+      // "Anders, namelijk" is verplicht zodra "Anders" is aangevinkt.
+      .refine(
+        (waarden) =>
+          !waarden.dagdelen.includes("anders") ||
+          (waarden.andersOmschrijving?.length ?? 0) > 0,
+        {
+          message: "Vul in wat de afwijkende tijd is.",
+          path: ["andersOmschrijving"],
+        },
+      )
+      .refine(
+        (waarden) =>
+          !waarden.starttijd ||
+          !waarden.eindtijd ||
+          waarden.eindtijd > waarden.starttijd,
+        {
+          message: "De eindtijd moet na de starttijd liggen.",
+          path: ["eindtijd"],
+        },
+      )
+      // Zonder datum valt er niets af te vinken als voltooid.
+      .refine((waarden) => !waarden.voltooid || waarden.datum !== "", {
+        message: "Vul eerst een datum in voordat je de training afvinkt.",
+        path: ["datum"],
+      })
+      // Een training of observatie hoort bij een school.
+      .refine((waarden) => eigenUren || waarden.klantId.length > 0, {
+        message: "Kies een school.",
+        path: ["klantId"],
+      })
+      // Zelf ingevulde uren horen bij een dag. "Nog in te plannen" bestaat
+      // alleen voor trainingen die met een school zijn afgesproken.
+      .refine((waarden) => !eigenUren || waarden.datum !== "", {
+        message: "Kies een datum.",
+        path: ["datum"],
+      })
+      .refine(
+        (waarden) => {
+          if (!eigenUren) return true;
+          const uren = leesUren(waarden.uren);
+          if (uren === null) return !urenVerplicht;
+          return uren > 0 && uren <= 24;
+        },
+        {
+          message: urenVerplicht
+            ? "Vul het aantal uren in: meer dan 0 en hooguit 24."
+            : "Vul een aantal uren tussen 0 en 24 in, of laat het veld leeg.",
+          path: ["uren"],
+        },
+      )
+  );
+}
+
+/** Het schema zonder gekozen soort; bepaalt de vorm van het formulier. */
+export const afspraakSchema = afspraakSchemaVoor();
 
 /** Trainingen in één keer aan een school hangen, zonder datum. */
 export const afgesprokenTrainingenSchema = z.object({
@@ -105,6 +175,17 @@ export const activiteitsoortSchema = z.object({
     .default("#3b82f6"),
   volgorde: z.coerce.number().int().min(0).max(999).default(0),
   actief: z.boolean().default(true),
+  // De medewerker vult de uren zelf in, zoals bij Literatuurstudie. Dan gelden
+  // de twee urenvelden hierboven niet.
+  handmatigeUren: z.boolean().default(false),
+  // Onder welke categorie de zelf ingevulde uren in de urenlijst komen.
+  urencategorie: z
+    .enum(["inlezen_trainingen", "literatuur_lezen", "overleg", "overig"], {
+      message: "Kies waar de uren onder vallen.",
+    })
+    .optional(),
+  // Uit bij bijvoorbeeld "Niet beschikbaar": wel in de agenda, geen werktijd.
+  teltAlsWerktijd: z.boolean().default(true),
 });
 
 export type ActiviteitsoortFormulier = z.infer<typeof activiteitsoortSchema>;

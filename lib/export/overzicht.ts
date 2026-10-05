@@ -110,7 +110,11 @@ function vergelijker(
     const uitkomst = (() => {
       switch (veld) {
         case "klant":
-          return a.klant.naam.localeCompare(b.klant.naam, "nl");
+          // Zonder school achteraan.
+          return (a.klant?.naam ?? "\uffff").localeCompare(
+            b.klant?.naam ?? "\uffff",
+            "nl",
+          );
         case "soort":
           return a.activiteitsoort.naam.localeCompare(
             b.activiteitsoort.naam,

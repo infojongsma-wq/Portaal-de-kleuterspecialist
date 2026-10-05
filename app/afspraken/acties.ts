@@ -11,8 +11,9 @@ import { afrondAutomatischeReistijdMinuten } from "@/lib/uren";
 import {
   activiteitsoortSchema,
   afgesprokenTrainingenSchema,
-  afspraakSchema,
+  afspraakSchemaVoor,
   klantSchema,
+  leesUren,
   urenregelSchema,
 } from "@/lib/validatie/afspraak";
 
@@ -24,9 +25,10 @@ import {
  * Security bepaalt wat er werkelijk mag. De controles hieronder zijn er voor
  * begrijpelijke meldingen, niet als beveiliging — die zit in Postgres.
  *
- * De uren en de reistijd van een afspraak worden hier bepaald, uit de
- * activiteitsoort en de school. Ze komen niet uit het formulier, want de
- * medewerker ziet die velden niet meer.
+ * De uren en de reistijd van een training of observatie worden hier bepaald,
+ * uit de activiteitsoort en de school. Ze komen niet uit het formulier, want de
+ * medewerker ziet die velden niet. Alleen bij soorten met zelf ingevulde uren,
+ * zoals Literatuurstudie, komt het aantal uren wel uit het formulier.
  *
  * Automatische urenregels worden niet weggeschreven: die zijn volledig af te
  * leiden uit de afspraken. Alleen handmatige uren worden opgeslagen.
@@ -94,7 +96,18 @@ function afgeleideGegevens(
 // ---------------------------------------------------------------------------
 
 export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
-  const gecontroleerd = afspraakSchema.safeParse(invoer);
+  const gegevens = await werkset();
+  const supabase = await supabaseServer();
+
+  // Welke velden verplicht zijn hangt af van de soort. Die zoekt de server zelf
+  // op in de database; wat de browser daarover denkt telt niet.
+  const gekozenSoortId =
+    typeof invoer === "object" && invoer !== null && "activiteitsoortId" in invoer
+      ? invoer.activiteitsoortId
+      : undefined;
+  const soort = gegevens.activiteitsoorten.find((s) => s.id === gekozenSoortId);
+
+  const gecontroleerd = afspraakSchemaVoor(soort).safeParse(invoer);
   if (!gecontroleerd.success) {
     return {
       gelukt: false,
@@ -104,16 +117,14 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
   }
 
   const waarden = gecontroleerd.data;
-  const gegevens = await werkset();
-  const supabase = await supabaseServer();
+  if (!soort) return fout("Dit soort afspraak bestaat niet.");
 
-  const klant = gegevens.klanten.find((k) => k.id === waarden.klantId);
-  if (!klant) return fout("Deze school bestaat niet.");
-
-  const soort = gegevens.activiteitsoorten.find(
-    (s) => s.id === waarden.activiteitsoortId,
-  );
-  if (!soort) return fout("Dit soort training bestaat niet.");
+  // Literatuurstudie, overig en niet beschikbaar hebben geen school.
+  const eigenUren = soort.handmatigeUren;
+  const klant = eigenUren
+    ? null
+    : gegevens.klanten.find((k) => k.id === waarden.klantId);
+  if (!eigenUren && !klant) return fout("Deze school bestaat niet.");
 
   const bestaande = waarden.id
     ? gegevens.afspraken.find((afspraak) => afspraak.id === waarden.id)
@@ -127,14 +138,41 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
 
   // De voorbereiding wordt op dezelfde dag geboekt als het bezoek. Verzet je
   // een afspraak, dan schuift de voorbereiding mee zolang die niet los stond.
+  // Zelf ingevulde uren hebben geen voorbereiding; de database wil daar dan
+  // dezelfde datum zien.
   const voorbereidingDatum =
-    bestaande && bestaande.voorbereidingDatum !== bestaande.datum
+    !eigenUren && bestaande && bestaande.voorbereidingDatum !== bestaande.datum
       ? bestaande.voorbereidingDatum
       : datum;
 
+  // Wat geen werk is, zoals "niet beschikbaar", valt ook niet af te vinken.
+  const voltooid = waarden.voltooid && soort.teltAlsWerktijd;
+
+  const urenEnReistijd: {
+    uren_op_locatie: number;
+    uren_voorbereiding: number;
+    reistijd_enkel_minuten: number | null;
+    reisafstand_enkel_km: number | null;
+    reisgegevens_bron: "automatisch" | null;
+  } = klant
+    ? afgeleideGegevens(
+        soort,
+        klant,
+        gegevens.instellingen.reistijdAfrondingMinuten,
+      )
+    : {
+        // De zelf ingevulde uren staan in de kolom voor uren op locatie. De
+        // soort bepaalt dat ze als eigen uren tellen, onder de eigen categorie.
+        uren_op_locatie: Math.round((leesUren(waarden.uren) ?? 0) * 100) / 100,
+        uren_voorbereiding: 0,
+        reistijd_enkel_minuten: null,
+        reisafstand_enkel_km: null,
+        reisgegevens_bron: null,
+      };
+
   const rij = {
-    klant_id: waarden.klantId,
-    contactpersoon_id: waarden.contactpersoonId || null,
+    klant_id: klant?.id ?? null,
+    contactpersoon_id: klant ? waarden.contactpersoonId || null : null,
     medewerker_id: gegevens.ik.id,
     activiteitsoort_id: waarden.activiteitsoortId,
     titel: waarden.titel,
@@ -146,26 +184,22 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
     starttijd: waarden.starttijd || null,
     eindtijd: waarden.eindtijd || null,
     voorbereiding_datum: voorbereidingDatum,
-    ...afgeleideGegevens(
-      soort,
-      klant,
-      gegevens.instellingen.reistijdAfrondingMinuten,
-    ),
-    status: waarden.voltooid
+    ...urenEnReistijd,
+    status: voltooid
       ? "voltooid"
       : // Een eerder geannuleerde of verzette afspraak blijft dat.
         (bestaande?.status === "geannuleerd" || bestaande?.status === "verzet"
           ? bestaande.status
           : "gepland"),
-    voltooid_op: waarden.voltooid
+    voltooid_op: voltooid
       ? (bestaande?.voltooidOp ?? new Date().toISOString())
       : null,
     // Is de training gedaan, dan is de voorbereiding dat ook. Bij annuleren
     // wordt er apart naar gevraagd (zie `annuleerAfspraak`).
-    voorbereiding_gedaan: waarden.voltooid
+    voorbereiding_gedaan: voltooid
       ? true
       : (bestaande?.voorbereidingGedaan ?? false),
-    afspraken_met_klant: waarden.afsprakenMetKlant || null,
+    afspraken_met_klant: klant ? waarden.afsprakenMetKlant || null : null,
     notitie: waarden.notitie || null,
     gewijzigd_door: gegevens.ik.id,
   };
@@ -542,13 +576,39 @@ export async function bewaarActiviteitsoort(
     };
   }
 
+  // Hangen er al afspraken aan, dan zou wisselen tussen vaste en zelf
+  // ingevulde uren de betekenis van die afspraken met terugwerkende kracht
+  // veranderen: de vaste uren op locatie zouden ineens eigen uren worden, of
+  // andersom.
+  const bestaande = waarden.id
+    ? gegevens.activiteitsoorten.find((soort) => soort.id === waarden.id)
+    : undefined;
+  if (
+    bestaande &&
+    bestaande.handmatigeUren !== waarden.handmatigeUren &&
+    gegevens.afspraken.some(
+      (afspraak) => afspraak.activiteitsoortId === bestaande.id,
+    )
+  ) {
+    return fout(
+      "Aan deze soort hangen al afspraken. Wisselen tussen vaste en zelf ingevulde uren kan dan niet meer. Maak een nieuwe soort aan en zet deze op non-actief.",
+    );
+  }
+
   const rij = {
     naam: waarden.naam,
-    uren_op_locatie: waarden.urenOpLocatie,
-    uren_voorbereiding: waarden.urenVoorbereiding,
+    // Bij zelf ingevulde uren zijn er geen vaste uren per afspraak.
+    uren_op_locatie: waarden.handmatigeUren ? 0 : waarden.urenOpLocatie,
+    uren_voorbereiding: waarden.handmatigeUren ? 0 : waarden.urenVoorbereiding,
     kleur: waarden.kleur,
     volgorde: waarden.volgorde,
     actief: waarden.actief,
+    handmatige_uren: waarden.handmatigeUren,
+    urencategorie: waarden.handmatigeUren
+      ? (waarden.urencategorie ?? "overig")
+      : null,
+    // Een training of observatie is altijd werk.
+    telt_als_werktijd: waarden.handmatigeUren ? waarden.teltAlsWerktijd : true,
   };
 
   if (waarden.id) {
@@ -563,9 +623,7 @@ export async function bewaarActiviteitsoort(
 
   const { data, error } = await supabase
     .from("activiteitsoorten")
-    // Soorten die het beheer hier aanmaakt hebben altijd vaste uren; de
-    // medewerker vult namelijk geen uren meer in.
-    .insert({ ...rij, handmatige_uren: false })
+    .insert(rij)
     .select("id")
     .single();
   if (error) return fout("De soort kon niet worden opgeslagen.", error);
