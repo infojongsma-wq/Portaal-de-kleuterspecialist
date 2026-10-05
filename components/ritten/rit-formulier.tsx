@@ -15,6 +15,7 @@ import { Datumveld } from "@/components/ui/datumveld";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Rit } from "@/lib/data/types";
+import type { School } from "@/lib/ritten/plaatsen";
 import { formatteerBedrag, formatteerKm } from "@/lib/formatteer";
 import { THUIS } from "@/lib/ritten/plaatsen";
 import { bedragVanRit, kmVanRit } from "@/lib/uren";
@@ -69,6 +70,7 @@ export function RitFormulier({
   rit,
   vandaag,
   eerderGebruikt,
+  scholen,
   thuisOmschrijving,
   vergoedingPerKm,
   onKlaar,
@@ -77,6 +79,8 @@ export function RitFormulier({
   rit: Rit | null;
   vandaag: string;
   eerderGebruikt: string[];
+  /** Scholen uit Klanten, met hun adres, om bij Van en Naar uit te kiezen. */
+  scholen: School[];
   thuisOmschrijving: string | null;
   /** De vergoeding die nu geldt, of `null` als die nog niet is ingesteld. */
   vergoedingPerKm: number | null;
@@ -240,6 +244,7 @@ export function RitFormulier({
             waarde={vanPlaats}
             onKies={kiesVan}
             eerderGebruikt={eerderGebruikt}
+            scholen={scholen}
             thuisOmschrijving={thuisOmschrijving}
             foutmelding={errors.vanPlaats?.message}
           />
@@ -251,6 +256,7 @@ export function RitFormulier({
             waarde={naarPlaats}
             onKies={kiesNaar}
             eerderGebruikt={eerderGebruikt}
+            scholen={scholen}
             thuisOmschrijving={thuisOmschrijving}
             foutmelding={errors.naarPlaats?.message}
           />
@@ -405,7 +411,7 @@ function Afstanduitleg({ status }: { status: Afstandstatus }) {
         return "De afstand wordt berekend…";
       case "berekend":
         // Google wil een vermelding als hun gegevens zonder kaart worden getoond.
-        return "Berekend met Google Maps: de snelste route met de auto. Klopt het niet? Pas het getal gewoon aan.";
+        return "Berekend met Google Maps: de snelste route met de auto, van adres tot adres. Klopt het niet? Pas het getal gewoon aan.";
       case "onthouden":
         return status.melding ?? "Zelfde afstand als bij je vorige rit over deze route.";
       case "zelf":

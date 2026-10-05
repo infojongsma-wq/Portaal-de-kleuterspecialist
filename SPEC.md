@@ -65,7 +65,7 @@ Bouw de app zo dat deze twee als instelbare velden in het beheerdersportaal staa
 | Auth | Supabase Auth, e-mail + wachtwoord, TOTP-tweestapsverificatie |
 | Autorisatie | Row Level Security in Postgres |
 | Datumbewerking | `date-fns` met locale `nl` |
-| Afstanden | Google Maps Routes API, alleen vanaf de server; plaatsnamen voorstellen via de PDOK Locatieserver (5.7) |
+| Afstanden | Google Maps Routes API, alleen vanaf de server; plaatsnamen en adressen voorstellen via de PDOK Locatieserver (5.7) |
 | Formulieren | `react-hook-form` + `zod` |
 | Hosting | Vercel |
 | Domein | `portaal.dekleuterspecialist.nl` (CNAME bij Strato) |
@@ -330,14 +330,14 @@ id                 uuid primary key
 medewerker_id      uuid not null references profielen(id)
 datum              date not null
 doel               text not null                  -- doel van de rit
-van_plaats         text not null                  -- plaatsnaam, of 'Thuis'
+van_plaats         text not null                  -- plaats, adres, school met adres, of 'Thuis'
 naar_plaats        text not null
 heen_en_terug      boolean not null default false -- "vice versa": de km tellen dubbel
 km_enkel           numeric(6,1) not null check (km_enkel > 0)
 vergoeding_per_km  numeric(5,3) not null          -- vastgelegd bij het opslaan
 ```
 
-- Van en naar zijn plaatsnamen. 'Thuis' staat voor het thuisadres van de medewerker: de standplaats in `profielen` (4.1).
+- Van en naar zijn een plaats ("Hengelo"), een adres ("Schoolweg 5, 5678 CD Hengelo") of een school uit `klanten`, als naam met adres ("De Proeftuin, Schoolweg 5, 5678 CD Hengelo"). Naam en adres staan zo in de rit zelf, zodat ook later nog te zien is waar de rit heen ging. 'Thuis' staat voor het thuisadres van de medewerker: de standplaats in `profielen` (4.1).
 - De vergoeding per km wordt bij het opslaan overgenomen uit `instellingen.kilometervergoeding_per_km`. Een latere wijziging van de vergoeding verandert eerdere ritten dus niet, net zoals bij de uren van een afspraak (4.6).
 - Er is geen aparte tabel met plaatsen: de keuzelijst haalt de eerder gebruikte plaatsen uit de ritten zelf.
 
@@ -535,8 +535,8 @@ Kilometers worden met één decimaal opgeslagen. Een afstand uit de routeplanner
 **De afstand automatisch bepalen**, zodra van en naar allebei gekozen zijn:
 
 1. Is de route eerder gereden, in een van beide richtingen, dan de `km_enkel` van de meest recente rit over die route. Hoofdletters en spaties tellen bij het vergelijken niet mee. Een afstand die de medewerker zelf heeft verbeterd, komt zo vanzelf terug.
-2. Anders de snelste route met de auto volgens Google Maps (Routes API), tussen de plaatsen. Voor Thuis alleen de woonplaats: straat en huisnummer gaan nooit naar een externe dienst.
-3. Liggen van en naar in dezelfde plaats, is er geen sleutel, of geeft Google geen antwoord, dan vult de medewerker de kilometers zelf in.
+2. Anders de snelste route met de auto volgens Google Maps (Routes API), van adres tot adres. Bij een school het adres uit `klanten`; bij alleen een plaatsnaam het midden van die plaats. Voor Thuis het volledige thuisadres, zonder naam: op uitdrukkelijk verzoek van de opdrachtgever een uitzondering op de privacyafspraak in CLAUDE.md, zodat de kilometers van deur tot deur kloppen.
+3. Liggen van en naar op hetzelfde punt, is er geen sleutel, of geeft Google geen antwoord, dan vult de medewerker de kilometers zelf in.
 
 De medewerker kan de kilometers altijd aanpassen.
 
@@ -618,7 +618,7 @@ Alleen voor `beheerder`:
 
 Tweekolomsindeling, net als het hoofdscherm. Zo eenvoudig dat iedereen het kan invullen.
 
-**Links — thuisadres:** straat en huisnummer, postcode en woonplaats. De medewerker stelt dit zelf in; het staat in de standplaatsvelden van `profielen` (4.1).
+**Links — thuisadres:** straat en huisnummer, postcode en woonplaats. De medewerker stelt dit zelf in; het staat in de standplaatsvelden van `profielen` (4.1). Voor de afstand gaat het, zonder naam, naar Google Maps (5.7); dat staat er ook bij.
 
 **Links — nieuwe rit:**
 
@@ -626,7 +626,7 @@ Tweekolomsindeling, net als het hoofdscherm. Zo eenvoudig dat iedereen het kan i
 |---|---|---|
 | Datum | Datumkiezer | dd-mm-jjjj, standaard vandaag |
 | Doel van de rit | Tekst | Verplicht. Met privacywaarschuwing |
-| Van | Keuzelijst met zoeken | Thuis bovenaan; daaronder de eerder gebruikte plaatsen, de vaakst gebruikte eerst. Tijdens het typen Nederlandse plaatsnamen uit de PDOK Locatieserver, met de provincie erbij als een naam vaker voorkomt. Een andere plaats kan zoals getypt. Bij een nieuwe rit staat hier al Thuis |
+| Van | Keuzelijst met zoeken | Thuis bovenaan; daaronder de eerder gebruikte plaatsen en adressen, de vaakst gebruikte eerst. Tijdens het typen: scholen uit `klanten` met hun adres, Nederlandse woonplaatsen uit de PDOK Locatieserver (met de provincie erbij als een naam vaker voorkomt) en, zodra er een huisnummer in staat, adressen uit PDOK. Iets anders kan zoals getypt. Bij een nieuwe rit staat hier al Thuis |
 | Naar | Keuzelijst met zoeken | Idem |
 | Vice versa (heen en terug) | Vinkje | De kilometers tellen dubbel |
 | Kilometers (enkele reis) | Getal | Vult zich vanzelf (5.7), aanpasbaar |

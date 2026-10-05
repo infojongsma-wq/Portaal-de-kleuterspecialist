@@ -200,15 +200,15 @@ export function MaandOverzicht({
                     ) : null}
                   </span>
                 </TableCell>
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
                   {formatteerKm(kmVanRit(rit))}
                 </TableCell>
                 {vergoedingInKop == null ? (
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {formatteerBedrag(rit.vergoedingPerKm)}
                   </TableCell>
                 ) : null}
-                <TableCell className="text-right tabular-nums">
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
                   {formatteerBedrag(bedragVanRit(rit))}
                 </TableCell>
                 {magWijzigen ? (
@@ -247,11 +247,11 @@ export function MaandOverzicht({
                 Totaal {naamVanMaand} ({totaal.aantal}{" "}
                 {totaal.aantal === 1 ? "rit" : "ritten"})
               </TableCell>
-              <TableCell className="text-right tabular-nums">
+              <TableCell className="whitespace-nowrap text-right tabular-nums">
                 {formatteerKm(totaal.km)} km
               </TableCell>
               {vergoedingInKop == null ? <TableCell /> : null}
-              <TableCell className="text-right tabular-nums">
+              <TableCell className="whitespace-nowrap text-right tabular-nums">
                 {formatteerBedrag(totaal.bedrag)}
               </TableCell>
               {magWijzigen ? <TableCell className="afdruk-verbergen" /> : null}

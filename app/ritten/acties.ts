@@ -16,6 +16,7 @@ import {
   routeAdres,
   THUIS,
   zelfdeRoutepunt,
+  type Adresboek,
 } from "@/lib/ritten/plaatsen";
 import { supabaseServer } from "@/lib/supabase/server";
 import { afrondKm, metersNaarKm } from "@/lib/uren";
@@ -176,8 +177,9 @@ export interface Afstand {
  * 1. Is deze route eerder gereden, in een van beide richtingen? Dan de
  *    afstand van de meest recente rit. Zo blijft een eigen verbetering
  *    bewaard, en is er geen externe dienst nodig.
- * 2. Anders rekent Google Maps de afstand over de weg uit, tussen de
- *    plaatsen. Voor Thuis alleen de woonplaats.
+ * 2. Anders rekent Google Maps de afstand over de weg uit: van adres tot
+ *    adres, of tussen plaatsen als er alleen een plaatsnaam is gekozen. Voor
+ *    Thuis het volledige thuisadres, zonder naam (SPEC.md 5.7).
  * 3. Lukt dat niet, dan vult de medewerker de kilometers zelf in.
  */
 export async function zoekAfstand(
@@ -207,14 +209,28 @@ export async function zoekAfstand(
     };
   }
 
-  const woonplaats = gegevens.ik.standplaatsPlaats;
-  if ((isThuis(van) || isThuis(naar)) && !woonplaats?.trim()) {
+  const boek: Adresboek = {
+    thuis: {
+      adres: gegevens.ik.standplaatsAdres,
+      postcode: gegevens.ik.standplaatsPostcode,
+      plaats: gegevens.ik.standplaatsPlaats,
+    },
+    // Ook scholen die op non-actief staan: een oude rit kan er nog heen gaan.
+    scholen: gegevens.klanten.map((klant) => ({
+      naam: klant.naam,
+      adres: klant.adres,
+      postcode: klant.postcode,
+      plaats: klant.plaats,
+    })),
+  };
+
+  if ((isThuis(van) || isThuis(naar)) && !gegevens.ik.standplaatsPlaats?.trim()) {
     return geen(
       "Stel bovenaan eerst je thuisadres in; dan rekent de app de afstand vanaf Thuis uit. Of vul de kilometers zelf in.",
     );
   }
 
-  if (zelfdeRoutepunt(van, naar, woonplaats)) {
+  if (zelfdeRoutepunt(van, naar, boek)) {
     return geen(
       "Van en naar liggen in dezelfde plaats. Vul de kilometers zelf in.",
     );
@@ -227,8 +243,8 @@ export async function zoekAfstand(
     );
   }
 
-  const vanAdres = routeAdres(van, woonplaats);
-  const naarAdres = routeAdres(naar, woonplaats);
+  const vanAdres = routeAdres(van, boek);
+  const naarAdres = routeAdres(naar, boek);
   if (!vanAdres || !naarAdres) return geen(null);
 
   try {

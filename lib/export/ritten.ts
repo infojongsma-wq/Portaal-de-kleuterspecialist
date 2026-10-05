@@ -113,8 +113,9 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
   blad.columns = [
     { key: "datum", width: 12 },
     { key: "doel", width: 40 },
-    { key: "van", width: 22 },
-    { key: "naar", width: 22 },
+    // Ruim, want hier kan een volledig adres staan.
+    { key: "van", width: 34 },
+    { key: "naar", width: 34 },
     { key: "heenEnTerug", width: 14 },
     { key: "kmEnkel", width: 15 },
     { key: "kmTotaal", width: 12 },
@@ -202,6 +203,15 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
   for (const [kolom, numFmt] of Object.entries(opmaak)) {
     blad.getColumn(kolom).eachCell({ includeEmpty: false }, (cel, rijnummer) => {
       if (rijnummer > KOPREGEL) cel.numFmt = numFmt;
+    });
+  }
+  // Lange adressen en doelen lopen door op de volgende regel, zodat alles
+  // leesbaar op papier komt.
+  for (const kolom of ["doel", "van", "naar"]) {
+    blad.getColumn(kolom).eachCell({ includeEmpty: false }, (cel, rijnummer) => {
+      if (rijnummer > KOPREGEL) {
+        cel.alignment = { ...cel.alignment, wrapText: true, vertical: "top" };
+      }
     });
   }
   for (const kolom of ["heenEnTerug", "kmEnkel", "kmTotaal", "vergoeding", "bedrag"]) {

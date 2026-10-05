@@ -1,44 +1,63 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, History, Home, MapPin, Plus, Search } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  History,
+  Home,
+  MapPin,
+  Plus,
+  School as SchoolIcoon,
+  Search,
+} from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import {
+  adresInEenRegel,
   isThuis,
   normaliseerPlaats,
+  schoolLabel,
   THUIS,
   type PlaatsSuggestie,
+  type School,
 } from "@/lib/ritten/plaatsen";
 import { cn } from "@/lib/utils";
 
 interface Optie {
   sleutel: string;
+  /** Wat er in de rit komt te staan. */
   waarde: string;
   titel: string;
   omschrijving?: string;
-  groep: "thuis" | "eerder" | "nederland" | "eigen";
+  groep: "thuis" | "eerder" | "scholen" | "nederland" | "eigen";
+  pictogram: "thuis" | "eerder" | "school" | "plaats" | "eigen";
 }
 
 const GROEPKOPPEN: Partial<Record<Optie["groep"], string>> = {
   eerder: "Eerder gebruikt",
-  nederland: "Plaatsen in Nederland",
+  scholen: "Scholen uit Klanten",
+  nederland: "Adressen en plaatsen in Nederland",
 };
 
 /**
- * Keuzelijst voor Van en Naar (SPEC.md 6.7).
+ * Keuzelijst voor Van en Naar (SPEC.md 6.7). Kiezen kan op vier manieren:
  *
- * Bovenaan staat altijd Thuis, daaronder de plaatsen die de medewerker eerder
- * gebruikte. Typt ze iets nieuws, dan komen er Nederlandse plaatsnamen bij,
- * via onze eigen server bij PDOK opgezocht. Staat de plaats er niet tussen,
- * bijvoorbeeld een plaats over de grens, dan kan ze hem gewoon gebruiken
- * zoals getypt.
+ * - Thuis, altijd bovenaan;
+ * - een plaats of adres dat eerder is gebruikt;
+ * - een school uit Klanten, met het adres dat daar staat;
+ * - tijdens het typen een woonplaats of, met een huisnummer erbij, een adres
+ *   uit de officiële lijst van de overheid (PDOK, via onze eigen server).
+ *
+ * Staat het er niet tussen, bijvoorbeeld een adres over de grens, dan kan het
+ * gewoon zoals getypt.
  */
 export function PlaatsKiezer({
   id,
   waarde,
   onKies,
   eerderGebruikt,
+  scholen,
   thuisOmschrijving,
   foutmelding,
 }: {
@@ -46,6 +65,7 @@ export function PlaatsKiezer({
   waarde: string;
   onKies: (plaats: string) => void;
   eerderGebruikt: string[];
+  scholen: School[];
   /** Het thuisadres in één regel, of `null` als het nog niet is ingesteld. */
   thuisOmschrijving: string | null;
   foutmelding?: string;
@@ -60,8 +80,18 @@ export function PlaatsKiezer({
   const term = zoekterm.trim();
   const zoekNormaal = normaliseerPlaats(term);
 
-  // Plaatsnamen opzoeken terwijl er getypt wordt, met een korte pauze zodat
-  // niet elke toetsaanslag een vraag wordt.
+  // Scholen op hun label, zodat een eerder gekozen school er weer als school
+  // uitziet: naam boven, adres eronder.
+  const scholenOpLabel = React.useMemo(
+    () =>
+      new Map(
+        scholen.map((school) => [normaliseerPlaats(schoolLabel(school)), school]),
+      ),
+    [scholen],
+  );
+
+  // Plaatsen en adressen opzoeken terwijl er getypt wordt, met een korte pauze
+  // zodat niet elke toetsaanslag een vraag wordt.
   React.useEffect(() => {
     if (!open || term.length < 2) return;
 
@@ -78,7 +108,7 @@ export function PlaatsKiezer({
         };
         setSuggesties(gegevens.suggesties ?? []);
       } catch {
-        // Afgebroken of geen verbinding: dan alleen de eigen plaatsen.
+        // Afgebroken of geen verbinding: dan alleen wat de app zelf kent.
         if (!afbreken.signal.aborted) setSuggesties([]);
       } finally {
         if (!afbreken.signal.aborted) setBezig(false);
@@ -93,14 +123,22 @@ export function PlaatsKiezer({
 
   const opties = React.useMemo<Optie[]>(() => {
     const lijst: Optie[] = [];
+    const alGetoond = new Set<string>();
+    const voegToe = (optie: Optie) => {
+      const sleutel = normaliseerPlaats(optie.waarde);
+      if (alGetoond.has(sleutel)) return;
+      alGetoond.add(sleutel);
+      lijst.push(optie);
+    };
 
     if (term === "" || normaliseerPlaats(THUIS).startsWith(zoekNormaal)) {
-      lijst.push({
+      voegToe({
         sleutel: "thuis",
         waarde: THUIS,
         titel: THUIS,
         omschrijving: thuisOmschrijving ?? "Nog geen thuisadres ingesteld",
         groep: "thuis",
+        pictogram: "thuis",
       });
     }
 
@@ -108,44 +146,68 @@ export function PlaatsKiezer({
       normaliseerPlaats(plaats).includes(zoekNormaal),
     );
     for (const plaats of term === "" ? eerder.slice(0, 12) : eerder) {
-      lijst.push({
+      const school = scholenOpLabel.get(normaliseerPlaats(plaats));
+      voegToe({
         sleutel: `eerder-${plaats}`,
         waarde: plaats,
-        titel: plaats,
+        titel: school ? school.naam : plaats,
+        omschrijving: school ? (adresInEenRegel(school) ?? undefined) : undefined,
         groep: "eerder",
+        pictogram: school ? "school" : "eerder",
       });
     }
 
     if (term.length >= 2) {
-      const alGetoond = new Set(lijst.map((optie) => normaliseerPlaats(optie.waarde)));
-      for (const suggestie of suggesties) {
-        const sleutel = normaliseerPlaats(suggestie.label);
-        if (alGetoond.has(sleutel)) continue;
-        alGetoond.add(sleutel);
-        lijst.push({
-          sleutel: `nl-${suggestie.label}`,
-          waarde: suggestie.label,
-          titel: suggestie.label,
-          omschrijving: [suggestie.gemeente, suggestie.provincie]
-            .filter((deel, positie, delen) => deel && delen.indexOf(deel) === positie)
-            .join(", "),
-          groep: "nederland",
+      const passendeScholen = scholen
+        .filter((school) =>
+          [school.naam, school.adres ?? "", school.plaats ?? ""].some((deel) =>
+            normaliseerPlaats(deel).includes(zoekNormaal),
+          ),
+        )
+        .slice(0, 6);
+      for (const school of passendeScholen) {
+        voegToe({
+          sleutel: `school-${schoolLabel(school)}`,
+          waarde: schoolLabel(school),
+          titel: school.naam,
+          omschrijving: adresInEenRegel(school) ?? undefined,
+          groep: "scholen",
+          pictogram: "school",
         });
       }
 
-      if (!alGetoond.has(zoekNormaal) && !isThuis(term)) {
-        lijst.push({
+      for (const suggestie of suggesties) {
+        voegToe({
+          sleutel: `nl-${suggestie.label}`,
+          waarde: suggestie.label,
+          titel: suggestie.label,
+          omschrijving:
+            suggestie.soort === "adres"
+              ? "Adres"
+              : [suggestie.gemeente, suggestie.provincie]
+                  .filter(
+                    (deel, positie, delen) => deel && delen.indexOf(deel) === positie,
+                  )
+                  .join(", "),
+          groep: "nederland",
+          pictogram: "plaats",
+        });
+      }
+
+      if (!isThuis(term)) {
+        voegToe({
           sleutel: "eigen",
           waarde: term,
           titel: `“${term}” gebruiken`,
-          omschrijving: "Zoals getypt, bijvoorbeeld een plaats over de grens",
+          omschrijving: "Zoals getypt, bijvoorbeeld een adres over de grens",
           groep: "eigen",
+          pictogram: "eigen",
         });
       }
     }
 
     return lijst;
-  }, [term, zoekNormaal, eerderGebruikt, suggesties, thuisOmschrijving]);
+  }, [term, zoekNormaal, eerderGebruikt, scholen, scholenOpLabel, suggesties, thuisOmschrijving]);
 
   // Sluiten zodra er buiten de keuzelijst wordt geklikt.
   React.useEffect(() => {
@@ -183,6 +245,7 @@ export function PlaatsKiezer({
   }
 
   const lijstId = `${id}-plaatsen`;
+  const gekozenSchool = waarde ? scholenOpLabel.get(normaliseerPlaats(waarde)) : undefined;
 
   return (
     <div ref={omhulsel} className="relative">
@@ -199,7 +262,7 @@ export function PlaatsKiezer({
             role="combobox"
             aria-expanded
             aria-controls={lijstId}
-            placeholder="Typ een plaats, bijvoorbeeld Hengelo"
+            placeholder="Typ een plaats, adres of school"
             className="h-10 pl-8"
             value={zoekterm}
             onChange={(gebeurtenis) => {
@@ -219,26 +282,32 @@ export function PlaatsKiezer({
           }}
           aria-haspopup="listbox"
           className={cn(
-            "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-left text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             foutmelding && "border-destructive",
           )}
         >
           {waarde ? (
             <span className="flex min-w-0 items-center gap-2">
-              {isThuis(waarde) ? (
-                <Home className="size-4 shrink-0 text-primary" aria-hidden />
-              ) : (
-                <MapPin className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              )}
-              <span className="truncate">
-                {waarde}
+              <Pictogram
+                soort={isThuis(waarde) ? "thuis" : gekozenSchool ? "school" : "plaats"}
+              />
+              <span className="min-w-0">
+                <span className="block truncate">
+                  {gekozenSchool ? gekozenSchool.naam : waarde}
+                </span>
                 {isThuis(waarde) && thuisOmschrijving ? (
-                  <span className="text-muted-foreground"> · {thuisOmschrijving}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {thuisOmschrijving}
+                  </span>
+                ) : gekozenSchool && adresInEenRegel(gekozenSchool) ? (
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {adresInEenRegel(gekozenSchool)}
+                  </span>
                 ) : null}
               </span>
             </span>
           ) : (
-            <span className="text-muted-foreground">Kies of typ een plaats…</span>
+            <span className="text-muted-foreground">Kies of typ een plaats, adres of school…</span>
           )}
           <ChevronsUpDown className="size-4 shrink-0 opacity-50" aria-hidden />
         </button>
@@ -248,7 +317,7 @@ export function PlaatsKiezer({
         <ul
           id={lijstId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-80 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
+          className="absolute z-50 mt-1 max-h-96 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md"
         >
           {opties.map((optie, positie) => {
             const vorige = opties[positie - 1];
@@ -282,9 +351,15 @@ export function PlaatsKiezer({
                       positie === gemarkeerd && "bg-accent text-accent-foreground",
                     )}
                   >
-                    <Pictogram groep={optie.groep} />
+                    <Pictogram soort={optie.pictogram} />
                     <span className="min-w-0 flex-1">
-                      <span className={cn("block truncate", optie.groep === "thuis" && "font-medium")}>
+                      <span
+                        className={cn(
+                          "block truncate",
+                          (optie.groep === "thuis" || optie.pictogram === "school") &&
+                            "font-medium",
+                        )}
+                      >
                         {optie.titel}
                       </span>
                       {optie.omschrijving ? (
@@ -302,7 +377,7 @@ export function PlaatsKiezer({
 
           {term.length >= 2 && bezig ? (
             <li className="px-2 py-1.5 text-xs text-muted-foreground">
-              Plaatsen zoeken…
+              Zoeken…
             </li>
           ) : null}
 
@@ -311,20 +386,29 @@ export function PlaatsKiezer({
               Typ nog een letter om te zoeken.
             </li>
           ) : null}
+
+          {term.length >= 2 && !/\d/.test(term) ? (
+            <li className="px-2 py-1.5 text-xs text-muted-foreground">
+              Tip: typ er een huisnummer bij om een adres te kiezen, bijvoorbeeld
+              &ldquo;Schoolweg 5 Hengelo&rdquo;.
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </div>
   );
 }
 
-function Pictogram({ groep }: { groep: Optie["groep"] }) {
+function Pictogram({ soort }: { soort: Optie["pictogram"] }) {
   const klasse = "size-4 shrink-0";
-  switch (groep) {
+  switch (soort) {
     case "thuis":
       return <Home className={cn(klasse, "text-primary")} aria-hidden />;
+    case "school":
+      return <SchoolIcoon className={cn(klasse, "text-primary")} aria-hidden />;
     case "eerder":
       return <History className={cn(klasse, "text-muted-foreground")} aria-hidden />;
-    case "nederland":
+    case "plaats":
       return <MapPin className={cn(klasse, "text-muted-foreground")} aria-hidden />;
     case "eigen":
       return <Plus className={cn(klasse, "text-muted-foreground")} aria-hidden />;

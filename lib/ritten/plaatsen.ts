@@ -22,19 +22,64 @@ export function zelfdePlaats(a: string, b: string): boolean {
   return normaliseerPlaats(a) === normaliseerPlaats(b);
 }
 
+export interface Adres {
+  adres: string | null;
+  postcode: string | null;
+  plaats: string | null;
+}
+
+/** "Schoolstraat 5, 7551 AB Hengelo", of `null` zonder plaats. */
+export function adresInEenRegel(adres: Adres): string | null {
+  if (!adres.plaats?.trim()) return null;
+  const plaatsregel = [adres.postcode?.trim(), adres.plaats.trim()]
+    .filter(Boolean)
+    .join(" ");
+  return [adres.adres?.trim(), plaatsregel].filter(Boolean).join(", ");
+}
+
+/** Een school uit Klanten, zoals hij in de keuzelijst van Van en Naar staat. */
+export interface School extends Adres {
+  naam: string;
+}
+
+/**
+ * Hoe een school in een rit komt te staan: naam en adres samen, zodat het
+ * overzicht en de Excel ook later nog laten zien waar de rit heen ging.
+ * "De Zonnebloem, Schoolstraat 5, 7551 AB Hengelo".
+ */
+export function schoolLabel(school: School): string {
+  const adres = adresInEenRegel(school);
+  return adres ? `${school.naam.trim()}, ${adres}` : school.naam.trim();
+}
+
+/**
+ * Wat de routeplanner nodig heeft om de afstand te bepalen: het thuisadres en
+ * de adressen van de scholen.
+ */
+export interface Adresboek {
+  thuis: Adres | null;
+  scholen: School[];
+}
+
 /**
  * Het adres zoals het naar de routeplanner gaat, of `null` als dat nog niet te
  * bepalen is.
  *
- * Voor Thuis is dat alléén de woonplaats. Straat en huisnummer gaan nooit naar
- * een externe dienst (CLAUDE.md, "Privacy"). "Hengelo (Gelderland)" wordt
- * "Hengelo, Gelderland", zodat de routeplanner de goede Hengelo neemt.
+ * - Thuis: het volledige thuisadres, zonder naam. Op verzoek van de
+ *   opdrachtgever is dat een uitzondering op de privacyafspraak (CLAUDE.md,
+ *   "Privacy"; SPEC.md 5.7): zo klopt de afstand van deur tot deur.
+ * - Een school uit Klanten: het adres van de school.
+ * - "Hengelo (Gelderland)" wordt "Hengelo, Gelderland", zodat de routeplanner
+ *   de goede Hengelo neemt.
+ * - Al het andere, zoals een getypt adres, gaat zoals het er staat.
  */
-export function routeAdres(
-  plaats: string,
-  thuisWoonplaats: string | null,
-): string | null {
-  if (isThuis(plaats)) return thuisWoonplaats?.trim() || null;
+export function routeAdres(plaats: string, boek: Adresboek): string | null {
+  if (isThuis(plaats)) return boek.thuis ? adresInEenRegel(boek.thuis) : null;
+
+  const school = boek.scholen.find((kandidaat) =>
+    zelfdePlaats(schoolLabel(kandidaat), plaats),
+  );
+  if (school) return adresInEenRegel(school) ?? school.naam;
 
   const metToevoeging = plaats.trim().match(/^(.+?)\s*\(([^)]+)\)$/);
   if (metToevoeging) return `${metToevoeging[1].trim()}, ${metToevoeging[2].trim()}`;
@@ -43,16 +88,16 @@ export function routeAdres(
 }
 
 /**
- * Liggen twee plaatsen op hetzelfde punt voor de routeplanner? Dan valt er
- * niets te berekenen, bijvoorbeeld van Thuis in Enschede naar Enschede.
+ * Liggen van en naar op hetzelfde punt voor de routeplanner? Dan valt er niets
+ * te berekenen, bijvoorbeeld van Enschede naar Enschede.
  */
 export function zelfdeRoutepunt(
   van: string,
   naar: string,
-  thuisWoonplaats: string | null,
+  boek: Adresboek,
 ): boolean {
-  const a = routeAdres(van, thuisWoonplaats);
-  const b = routeAdres(naar, thuisWoonplaats);
+  const a = routeAdres(van, boek);
+  const b = routeAdres(naar, boek);
   return a !== null && b !== null && zelfdePlaats(a, b);
 }
 
@@ -124,10 +169,20 @@ export interface PlaatsSuggestie {
   plaats: string;
   gemeente: string | null;
   provincie: string | null;
+  /** Een woonplaats, of een adres met huisnummer. */
+  soort: "woonplaats" | "adres";
+}
+
+/** "7551AB" wordt "7551 AB", zoals een postcode op een envelop staat. */
+function netjesPostcode(tekst: string): string {
+  return tekst.replace(/\b(\d{4})\s?([A-Za-z]{2})\b/g, (_, cijfers: string, letters: string) =>
+    `${cijfers} ${letters.toUpperCase()}`,
+  );
 }
 
 /**
- * Leest de suggesties van de PDOK Locatieserver (type woonplaats).
+ * Leest de suggesties van de PDOK Locatieserver: woonplaatsen en adressen.
+ * Adressen komen eerst; wie een huisnummer typt, zoekt een adres.
  *
  * PDOK noemt een woonplaats "Hengelo, Hengelo, Overijssel": plaats, gemeente,
  * provincie. Bestaat dezelfde plaatsnaam vaker, dan krijgt het label de
@@ -139,9 +194,33 @@ export function leesPdokSuggesties(antwoord: unknown): PlaatsSuggestie[] {
     ?.response?.docs;
   if (!Array.isArray(documenten)) return [];
 
+  // Adressen: PDOK schrijft ze als "Schoolstraat 5, 7551AB Hengelo". Die
+  // nemen we over zoals ze zijn, met een spatie in de postcode.
+  const adressen: PlaatsSuggestie[] = documenten.flatMap((document) => {
+    const { type, weergavenaam } = (document ?? {}) as {
+      type?: unknown;
+      weergavenaam?: unknown;
+    };
+    if (type !== "adres" || typeof weergavenaam !== "string") return [];
+    const label = netjesPostcode(weergavenaam.trim());
+    if (!label) return [];
+    return [
+      {
+        label,
+        plaats: label,
+        gemeente: null,
+        provincie: null,
+        soort: "adres" as const,
+      },
+    ];
+  });
+
   const ruw = documenten.flatMap((document) => {
-    const weergavenaam = (document as { weergavenaam?: unknown })?.weergavenaam;
-    if (typeof weergavenaam !== "string") return [];
+    const { type, weergavenaam } = (document ?? {}) as {
+      type?: unknown;
+      weergavenaam?: unknown;
+    };
+    if (type === "adres" || typeof weergavenaam !== "string") return [];
     const delen = weergavenaam.split(",").map((deel) => deel.trim());
     const plaats = delen[0];
     if (!plaats) return [];
@@ -165,11 +244,13 @@ export function leesPdokSuggesties(antwoord: unknown): PlaatsSuggestie[] {
       ) === positie,
   );
 
-  return uniek.map((suggestie) => {
+  const woonplaatsen = uniek.map((suggestie): PlaatsSuggestie => {
     const naamgenoten = uniek.filter((ander) =>
       zelfdePlaats(ander.plaats, suggestie.plaats),
     );
-    if (naamgenoten.length === 1) return { ...suggestie, label: suggestie.plaats };
+    if (naamgenoten.length === 1) {
+      return { ...suggestie, label: suggestie.plaats, soort: "woonplaats" };
+    }
 
     const zelfdeProvincie = naamgenoten.filter(
       (ander) => ander.provincie === suggestie.provincie,
@@ -182,8 +263,11 @@ export function leesPdokSuggesties(antwoord: unknown): PlaatsSuggestie[] {
     return {
       ...suggestie,
       label: toevoeging ? `${suggestie.plaats} (${toevoeging})` : suggestie.plaats,
+      soort: "woonplaats",
     };
   });
+
+  return [...adressen, ...woonplaatsen];
 }
 
 /**

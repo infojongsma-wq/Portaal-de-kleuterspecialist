@@ -20,12 +20,13 @@ const isoDatum = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Kies een geldige datum.");
 
+// Een plaats, een adres, of een school met adres.
 const plaats = (melding: string) =>
   z
     .string()
     .trim()
     .min(1, melding)
-    .max(100, "Deze plaatsnaam is te lang; maximaal 100 tekens.");
+    .max(200, "Dit is te lang; maximaal 200 tekens.");
 
 export const ritSchema = z
   .object({

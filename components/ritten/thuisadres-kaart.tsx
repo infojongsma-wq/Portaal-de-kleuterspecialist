@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { adresInEenRegel } from "@/lib/ritten/plaatsen";
 
 export interface Thuisadres {
   adres: string | null;
@@ -16,17 +17,16 @@ export interface Thuisadres {
   plaats: string | null;
 }
 
-/** "Laaressingel 12, 7514 AB Enschede", of `null` zonder woonplaats. */
+/** "Voorbeeldstraat 1, 1234 AB Proefdorp", of `null` zonder woonplaats. */
 export function thuisadresInEenRegel(thuis: Thuisadres): string | null {
-  if (!thuis.plaats?.trim()) return null;
-  const plaatsregel = [thuis.postcode, thuis.plaats].filter(Boolean).join(" ");
-  return [thuis.adres, plaatsregel].filter(Boolean).join(", ");
+  return adresInEenRegel(thuis);
 }
 
 /**
  * Het thuisadres van de medewerker (SPEC.md 6.7). Thuis staat bovenaan in de
- * keuzelijsten van Van en Naar. Voor de afstand gebruikt de app alleen de
- * woonplaats; het adres zelf gaat nergens heen.
+ * keuzelijsten van Van en Naar. Voor de afstand gaat het adres, zonder naam,
+ * naar Google Maps: op verzoek van de opdrachtgever, zodat de kilometers van
+ * deur tot deur kloppen (SPEC.md 5.7).
  */
 export function ThuisadresKaart({ thuis }: { thuis: Thuisadres }) {
   const router = useRouter();
@@ -126,8 +126,8 @@ export function ThuisadresKaart({ thuis }: { thuis: Thuisadres }) {
         )}
 
         <p className="text-xs text-muted-foreground">
-          Thuis staat bovenaan bij Van en Naar. Voor de afstand gebruikt de app
-          alleen je woonplaats; je straat en huisnummer gaan nergens heen.
+          Thuis staat bovenaan bij Van en Naar. Om de kilometers van deur tot
+          deur uit te rekenen, gaat dit adres zonder je naam naar Google Maps.
         </p>
 
         {melding ? (

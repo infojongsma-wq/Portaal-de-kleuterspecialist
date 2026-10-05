@@ -72,6 +72,7 @@ Als je een van deze getallen in een `.ts`-bestand ziet staan buiten `lib/uren/co
 
 - **Geen leerlinggegevens.** Bij elk vrij tekstveld (`notitie`, `afspraken_met_klant`) een zichtbare waarschuwing tonen: *"Alleen zakelijke afspraken. Geen namen of bijzonderheden van individuele leerlingen."*
 - Geen persoonsgegevens in logregels, foutmeldingen of externe diensten.
+  - **Eén uitzondering, op uitdrukkelijk verzoek van de opdrachtgever (oktober 2026):** voor de afstand van een rit gaat het thuisadres van de medewerker naar Google Maps (Routes API). Zonder naam, alleen vanaf de server, en alleen voor die berekening (`SPEC.md` 5.7). Geen andere persoonsgegevens, en geen andere diensten.
 - Geen analytics of trackingscripts van derden.
 - In de ontwikkelomgeving uitsluitend verzonnen testgegevens. Nooit echte namen van medewerkers of scholen.
 

@@ -7,10 +7,12 @@ import { leesGoogleAfstand } from "./plaatsen";
  * `GOOGLE_MAPS_API_KEY`, nooit in een `NEXT_PUBLIC_*`-variabele: anders zou
  * iedereen hem uit de browser kunnen halen en op onze rekening gebruiken.
  *
- * Er gaan alleen plaatsnamen naar Google, zoals "Enschede" of "Hengelo,
- * Overijssel". Nooit een straat of huisnummer: zie `routeAdres` in
- * `plaatsen.ts`. De vraag komt van onze server, niet uit de browser van de
- * medewerker; Google ziet dus ook haar IP-adres niet.
+ * Naar Google gaan adressen en plaatsnamen, nooit een naam van een persoon.
+ * Voor Thuis is dat het volledige thuisadres: op verzoek van de opdrachtgever
+ * een bewuste uitzondering op de privacyafspraak (CLAUDE.md, "Privacy";
+ * SPEC.md 5.7). Zie `routeAdres` in `plaatsen.ts`. De vraag komt van onze
+ * server, niet uit de browser van de medewerker; Google ziet dus ook haar
+ * IP-adres niet.
  */
 
 const ROUTES_API = "https://routes.googleapis.com/directions/v2:computeRoutes";

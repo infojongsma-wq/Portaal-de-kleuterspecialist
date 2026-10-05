@@ -359,11 +359,14 @@ Enschede naar Hengelo. Staat er een kruisje met "Google weigert hem", dan staat
 de Routes API meestal nog niet aan (punt 4), of is de sleutel beperkt tot een
 andere API (punt 6).
 
-**Privacy.** Naar Google gaan alleen plaatsnamen, zoals "Hengelo"; voor Thuis
-alleen de woonplaats, nooit straat en huisnummer. De vraag komt van de server,
-niet uit de browser van de medewerker. De plaatsnamen die de app voorstelt
-tijdens het typen komen van PDOK, de dienst van de Nederlandse overheid, en
-lopen ook via de server.
+**Privacy.** Naar Google gaan adressen en plaatsnamen, nooit een naam. Voor
+Thuis is dat het volledige thuisadres van de medewerker: zo heb je het
+gekozen, zodat de kilometers van deur tot deur kloppen. Het is de enige
+uitzondering op de privacyafspraak in CLAUDE.md. Vertel het de medewerker, en
+zet in je AVG-administratie dat haar thuisadres hiervoor naar Google gaat. De
+vraag komt van de server, niet uit haar browser. De plaatsen en adressen die
+de app tijdens het typen voorstelt, komen van PDOK, de dienst van de
+Nederlandse overheid, en lopen ook via de server.
 
 ---
 
@@ -420,7 +423,8 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
   regel blijft: alleen zakelijke afspraken.
 - **AVG.** Je legt arbeidstijden van een medewerker vast. Een korte
   verwerkersovereenkomst met Supabase en Vercel en een regeling hoe lang je de
-  gegevens bewaart horen erbij (`SPEC.md` fase 6).
+  gegevens bewaart horen erbij (`SPEC.md` fase 6). Voor de kilometers gaat het
+  thuisadres van de medewerker naar Google (stap 4d); neem dat mee.
 
 ---
 

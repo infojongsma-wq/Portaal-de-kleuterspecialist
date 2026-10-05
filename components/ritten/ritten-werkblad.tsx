@@ -12,6 +12,7 @@ import {
 } from "@/components/ritten/thuisadres-kaart";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Rit } from "@/lib/data/types";
+import type { School } from "@/lib/ritten/plaatsen";
 
 /**
  * Indeling van het tabblad Ritten (SPEC.md 6.7): links het thuisadres en het
@@ -28,6 +29,7 @@ export function RittenWerkblad({
   magWijzigen,
   maandRitten,
   eerderGebruikt,
+  scholen,
   maand,
   vorigeMaand,
   volgendeMaand,
@@ -42,6 +44,7 @@ export function RittenWerkblad({
   magWijzigen: boolean;
   maandRitten: Rit[];
   eerderGebruikt: string[];
+  scholen: School[];
   maand: string;
   vorigeMaand: string;
   volgendeMaand: string;
@@ -77,6 +80,7 @@ export function RittenWerkblad({
                 rit={gekozenRit}
                 vandaag={vandaag}
                 eerderGebruikt={eerderGebruikt}
+                scholen={scholen}
                 thuisOmschrijving={thuisOmschrijving}
                 vergoedingPerKm={vergoedingPerKm}
                 onKlaar={() => setTeWijzigen(null)}

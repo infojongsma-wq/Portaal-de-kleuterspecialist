@@ -7,9 +7,25 @@ import {
   leesPdokSuggesties,
   onthoudenAfstand,
   routeAdres,
+  schoolLabel,
   zelfdeRoutepunt,
+  type Adresboek,
   type EerdereRit,
 } from "../plaatsen";
+
+/** Verzonnen adressen, zoals in de ontwikkelomgeving afgesproken (CLAUDE.md). */
+const BOEK: Adresboek = {
+  thuis: { adres: "Voorbeeldstraat 1", postcode: "1234 AB", plaats: "Proefdorp" },
+  scholen: [
+    {
+      naam: "De Proeftuin",
+      adres: "Schoolweg 5",
+      postcode: "5678 CD",
+      plaats: "Hengelo",
+    },
+    { naam: "Het Testlab", adres: null, postcode: null, plaats: "Zwolle" },
+  ],
+};
 
 /** Verzonnen ritten; plaatsnamen zijn openbaar, er staan geen adressen in. */
 function rit(velden: Partial<EerdereRit>): EerdereRit {
@@ -24,29 +40,51 @@ function rit(velden: Partial<EerdereRit>): EerdereRit {
 }
 
 describe("routeadres", () => {
-  it("gebruikt voor Thuis alleen de woonplaats, nooit straat of huisnummer", () => {
-    expect(routeAdres("Thuis", "Enschede")).toBe("Enschede");
-    expect(routeAdres("thuis ", "Enschede")).toBe("Enschede");
+  it("gebruikt voor Thuis het volledige thuisadres, zonder naam", () => {
+    // Op verzoek van de opdrachtgever (SPEC.md 5.7): van deur tot deur.
+    expect(routeAdres("Thuis", BOEK)).toBe("Voorbeeldstraat 1, 1234 AB Proefdorp");
+    expect(routeAdres("thuis ", BOEK)).toBe("Voorbeeldstraat 1, 1234 AB Proefdorp");
+  });
+
+  it("gebruikt de woonplaats als straat en postcode ontbreken", () => {
+    const boek = { ...BOEK, thuis: { adres: null, postcode: null, plaats: "Proefdorp" } };
+    expect(routeAdres("Thuis", boek)).toBe("Proefdorp");
   });
 
   it("weet niets zolang er geen woonplaats is ingesteld", () => {
-    expect(routeAdres("Thuis", null)).toBeNull();
-    expect(routeAdres("Thuis", "  ")).toBeNull();
+    expect(routeAdres("Thuis", { ...BOEK, thuis: null })).toBeNull();
+    expect(
+      routeAdres("Thuis", { ...BOEK, thuis: { adres: "Voorbeeldstraat 1", postcode: null, plaats: " " } }),
+    ).toBeNull();
   });
 
-  it("maakt van de toevoeging tussen haakjes een deel van het adres", () => {
-    expect(routeAdres("Hengelo (Gelderland)", "Enschede")).toBe(
-      "Hengelo, Gelderland",
+  it("gebruikt voor een school uit Klanten het adres van de school", () => {
+    expect(routeAdres("De Proeftuin, Schoolweg 5, 5678 CD Hengelo", BOEK)).toBe(
+      "Schoolweg 5, 5678 CD Hengelo",
+    );
+    expect(routeAdres("Het Testlab, Zwolle", BOEK)).toBe("Zwolle");
+  });
+
+  it("geeft een getypt adres ongewijzigd door", () => {
+    expect(routeAdres("Kerkplein 2, 4321 EF Almelo", BOEK)).toBe(
+      "Kerkplein 2, 4321 EF Almelo",
     );
   });
 
-  it("geeft een gewone plaatsnaam ongewijzigd door", () => {
-    expect(routeAdres(" Zwolle ", "Enschede")).toBe("Zwolle");
+  it("maakt van de toevoeging tussen haakjes een deel van het adres", () => {
+    expect(routeAdres("Hengelo (Gelderland)", BOEK)).toBe("Hengelo, Gelderland");
   });
 
-  it("herkent dat Thuis en de eigen woonplaats op hetzelfde punt liggen", () => {
-    expect(zelfdeRoutepunt("Thuis", "enschede", "Enschede")).toBe(true);
-    expect(zelfdeRoutepunt("Thuis", "Hengelo", "Enschede")).toBe(false);
+  it("geeft een gewone plaatsnaam ongewijzigd door", () => {
+    expect(routeAdres(" Zwolle ", BOEK)).toBe("Zwolle");
+  });
+
+  it("herkent dat van en naar op hetzelfde punt liggen", () => {
+    expect(zelfdeRoutepunt("Zwolle", "zwolle", BOEK)).toBe(true);
+    expect(zelfdeRoutepunt("Het Testlab, Zwolle", "Zwolle", BOEK)).toBe(true);
+    // Thuis is een adres, geen woonplaats: binnen dezelfde plaats valt er wél
+    // iets uit te rekenen.
+    expect(zelfdeRoutepunt("Thuis", "Proefdorp", BOEK)).toBe(false);
   });
 
   it("herkent Thuis ongeacht hoofdletters", () => {
@@ -124,6 +162,16 @@ describe("eerder gebruikte plaatsen", () => {
   });
 });
 
+describe("school in een rit", () => {
+  it("zet naam en adres samen", () => {
+    expect(schoolLabel(BOEK.scholen[0])).toBe("De Proeftuin, Schoolweg 5, 5678 CD Hengelo");
+  });
+
+  it("zet alleen de plaats erbij als het adres ontbreekt", () => {
+    expect(schoolLabel(BOEK.scholen[1])).toBe("Het Testlab, Zwolle");
+  });
+});
+
 describe("antwoord van PDOK lezen", () => {
   it("geeft een unieke plaats zonder toevoeging", () => {
     const antwoord = {
@@ -137,6 +185,7 @@ describe("antwoord van PDOK lezen", () => {
         plaats: "Zwolle",
         gemeente: "Zwolle",
         provincie: "Overijssel",
+        soort: "woonplaats",
       },
     ]);
   });
@@ -170,6 +219,22 @@ describe("antwoord van PDOK lezen", () => {
       "Den Hoorn (Zuid-Holland)",
       "Den Hoorn (Hollands Kroon)",
       "Den Hoorn (Texel)",
+    ]);
+  });
+
+  it("leest adressen, met een spatie in de postcode, vóór de woonplaatsen", () => {
+    const antwoord = {
+      response: {
+        docs: [
+          { type: "woonplaats", weergavenaam: "Hengelo, Hengelo, Overijssel" },
+          { type: "adres", weergavenaam: "Schoolweg 5, 5678CD Hengelo" },
+        ],
+      },
+    };
+    const suggesties = leesPdokSuggesties(antwoord);
+    expect(suggesties.map((s) => [s.label, s.soort])).toEqual([
+      ["Schoolweg 5, 5678 CD Hengelo", "adres"],
+      ["Hengelo", "woonplaats"],
     ]);
   });
 

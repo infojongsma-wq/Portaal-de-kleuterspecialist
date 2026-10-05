@@ -82,6 +82,15 @@ export default async function RittenPagina({
           magWijzigen={magWijzigen}
           maandRitten={maandRitten}
           eerderGebruikt={eerderGebruiktePlaatsen(vanBekeken)}
+          scholen={gegevens.klanten
+            .filter((klant) => klant.actief)
+            .sort((a, b) => a.naam.localeCompare(b.naam, "nl"))
+            .map((klant) => ({
+              naam: klant.naam,
+              adres: klant.adres,
+              postcode: klant.postcode,
+              plaats: klant.plaats,
+            }))}
           maand={maand}
           vorigeMaand={verschuifMaand(maand, -1)}
           volgendeMaand={verschuifMaand(maand, 1)}
