@@ -1147,3 +1147,13 @@ $$;
 update public.instellingen
 set kilometervergoeding_per_km = 0.25
 where kilometervergoeding_per_km is null;
+
+-- ---------------------------------------------------------------------------
+-- 4. Supabase laten weten dat er een tabel bij is
+-- ---------------------------------------------------------------------------
+
+-- De koppeling tussen het portaal en de database (PostgREST) houdt een lijst
+-- bij van alle tabellen. Meestal ziet hij een nieuwe tabel vanzelf; deze regel
+-- zorgt dat het meteen gebeurt. Anders blijft het tabblad Ritten nog even
+-- "Nog één stap" zeggen.
+notify pgrst, 'reload schema';
