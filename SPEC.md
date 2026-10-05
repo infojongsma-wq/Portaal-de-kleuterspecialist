@@ -9,11 +9,12 @@
 
 De Kleuterspecialist verzorgt trainingen en observaties bij basisscholen. Er is één medewerker in dienst (mogelijk later meer). Zij plant zelf haar afspraken met scholen, werkt vanuit huis en reist naar klanten.
 
-De app moet drie dingen doen:
+De app moet vier dingen doen:
 
 1. **Registreren** — afspraken vastleggen. Niet elke afspraak heeft een school: een afspraak is **op school** (training, observatie; uren automatisch berekend) of **anders** (literatuurstudie, overig, niet beschikbaar; uren zelf ingevuld). Zie 4.5.
 2. **Plannen** — een agenda die laat zien wat wanneer staat gepland
 3. **Verantwoorden** — een urenoverzicht dat aantoont dat de jaarurennorm gehaald wordt
+4. **Ritten bijhouden** — gereden kilometers vastleggen voor de kilometervergoeding, per maand af te drukken of als Excel te downloaden (6.7)
 
 De urenregistratie is wettelijk verplicht (Arbeidstijdenwet) en moet betrouwbaar en herleidbaar zijn.
 
@@ -64,6 +65,7 @@ Bouw de app zo dat deze twee als instelbare velden in het beheerdersportaal staa
 | Auth | Supabase Auth, e-mail + wachtwoord, TOTP-tweestapsverificatie |
 | Autorisatie | Row Level Security in Postgres |
 | Datumbewerking | `date-fns` met locale `nl` |
+| Afstanden | Google Maps Routes API, alleen vanaf de server; plaatsnamen voorstellen via de PDOK Locatieserver (5.7) |
 | Formulieren | `react-hook-form` + `zod` |
 | Hosting | Vercel |
 | Domein | `portaal.dekleuterspecialist.nl` (CNAME bij Strato) |
@@ -102,6 +104,8 @@ in_dienst_vanaf       date
 uit_dienst_per        date
 actief                boolean not null default true
 ```
+
+De standplaats is het thuisadres van de medewerker. Zij stelt het zelf in op het tabblad Ritten (6.7).
 
 ### 4.2 `contracten`
 
@@ -297,7 +301,7 @@ Eén rij, key-value of vaste kolommen.
 
 ```sql
 eigen_reistijd_uren_per_dag   numeric(4,2) not null default 2.00
-kilometervergoeding_per_km    numeric(5,3)
+kilometervergoeding_per_km    numeric(5,3)     -- € 0,25; geldt voor nieuwe ritten (4.11)
 reistijd_afronding_minuten    integer not null default 5
 max_uren_per_dag_waarschuwing numeric(4,2) not null default 12.00
 ```
@@ -315,7 +319,29 @@ nieuwe_waarde jsonb
 tijdstip      timestamptz not null default now()
 ```
 
-Vullen met database-triggers op `afspraken` en `urenregels`. Alleen leesbaar voor de beheerder, nooit bewerkbaar.
+Vullen met database-triggers op `afspraken`, `urenregels` en `ritten`. Alleen leesbaar voor de beheerder, nooit bewerkbaar.
+
+### 4.11 `ritten`
+
+Gereden ritten voor de kilometervergoeding, één rij per rit.
+
+```sql
+id                 uuid primary key
+medewerker_id      uuid not null references profielen(id)
+datum              date not null
+doel               text not null                  -- doel van de rit
+van_plaats         text not null                  -- plaatsnaam, of 'Thuis'
+naar_plaats        text not null
+heen_en_terug      boolean not null default false -- "vice versa": de km tellen dubbel
+km_enkel           numeric(6,1) not null check (km_enkel > 0)
+vergoeding_per_km  numeric(5,3) not null          -- vastgelegd bij het opslaan
+```
+
+- Van en naar zijn plaatsnamen. 'Thuis' staat voor het thuisadres van de medewerker: de standplaats in `profielen` (4.1).
+- De vergoeding per km wordt bij het opslaan overgenomen uit `instellingen.kilometervergoeding_per_km`. Een latere wijziging van de vergoeding verandert eerdere ritten dus niet, net zoals bij de uren van een afspraak (4.6).
+- Er is geen aparte tabel met plaatsen: de keuzelijst haalt de eerder gebruikte plaatsen uit de ritten zelf.
+
+**Waarschuwing in de UI bij `doel`:** dezelfde privacywaarschuwing als bij de vrije tekstvelden van een afspraak (4.6).
 
 ---
 
@@ -482,6 +508,38 @@ Dit geldt ook voor afspraken 'anders': Literatuurstudie en Overig tellen als ger
 - Weergave in de interface: uren met komma als decimaalteken (`6,50`), nooit met punt
 - Optioneel naast de decimale weergave ook `6u30` tonen
 
+### 5.7 Ritten en kilometervergoeding
+
+```
+km_rit      = km_enkel × 2   bij heen en terug ("vice versa")
+            = km_enkel       anders
+bedrag_rit  = km_rit × vergoeding_per_km, afgerond op hele centen
+maandtotaal = Σ km_rit  en  Σ bedrag_rit
+```
+
+Het totaalbedrag is de som van de **afgeronde** bedragen per rit, niet het totaal aantal kilometers × de vergoeding. Zo tellen de regels in het overzicht en in de Excel precies op tot het totaal, ook als de vergoeding halverwege de maand is gewijzigd.
+
+**Voorbeeldmaand (vergoeding € 0,25):**
+
+| Rit | Km enkel | Heen en terug | Km | Bedrag |
+|---|---|---|---|---|
+| Thuis – Hengelo | 23,4 | ja | 46,8 | € 11,70 |
+| Thuis – Zwolle | 10,1 | nee | 10,1 | € 2,53 (€ 2,525 naar boven) |
+| Thuis – Zwolle | 10,1 | nee | 10,1 | € 2,53 |
+| **Totaal** | | | **67,0** | **€ 16,76** |
+
+67,0 × € 0,25 zou € 16,75 geven; de regels tellen op tot € 16,76, en dat is het totaal.
+
+Kilometers worden met één decimaal opgeslagen. Een afstand uit de routeplanner, in meters, wordt afgerond op 0,1 km.
+
+**De afstand automatisch bepalen**, zodra van en naar allebei gekozen zijn:
+
+1. Is de route eerder gereden, in een van beide richtingen, dan de `km_enkel` van de meest recente rit over die route. Hoofdletters en spaties tellen bij het vergelijken niet mee. Een afstand die de medewerker zelf heeft verbeterd, komt zo vanzelf terug.
+2. Anders de snelste route met de auto volgens Google Maps (Routes API), tussen de plaatsen. Voor Thuis alleen de woonplaats: straat en huisnummer gaan nooit naar een externe dienst.
+3. Liggen van en naar in dezelfde plaats, is er geen sleutel, of geeft Google geen antwoord, dan vult de medewerker de kilometers zelf in.
+
+De medewerker kan de kilometers altijd aanpassen.
+
 ---
 
 ## 6. Schermen
@@ -520,7 +578,7 @@ Onder het formulier een **live urenberekening** die meteen laat zien: `3,00 op l
 FullCalendar met knoppen voor maand, week en dag. Kleuren per activiteitsoort. Klikken op een afspraak laadt deze in het formulier. Vandaag gemarkeerd. Schoolvakanties met een grijze achtergrond.
 
 **Boven — knoppenbalk:**
-`Afspraken` · `Overzicht` · `Klanten` · `Mijn uren` · (bij beheerder) `Beheer`
+`Afspraken` · `Overzicht` · `Klanten` · `Mijn uren` · `Ritten` · (bij beheerder) `Beheer`
 
 ### 6.3 Overzicht (`/overzicht`)
 
@@ -552,9 +610,38 @@ Alleen voor `beheerder`:
 - **Urenverantwoording** — per medewerker en per periode: gepland versus gerealiseerd, saldo ten opzichte van de norm, uitsplitsing per categorie, grafiek met normlijn en werkelijke lijn
 - **Soorten afspraken** — per soort instellen of de uren vastliggen (op school: uren op locatie en voorbereiding) of dat de medewerker ze zelf invult (anders: onder welke urencategorie ze vallen en of ze meetellen als werktijd)
 - **Niet-inzetbare dagen** — schoolvakanties en feestdagen per jaar invoeren
-- **Instellingen** — eigen reistijd per dag, kilometervergoeding, afronding
+- **Instellingen** — eigen reistijd per dag, kilometervergoeding (aan te passen; geldt voor nieuwe ritten), afronding
 - **Wijzigingslog** — alleen lezen
 - **Export** — Excel en PDF per periode
+
+### 6.7 Ritten (`/ritten`)
+
+Tweekolomsindeling, net als het hoofdscherm. Zo eenvoudig dat iedereen het kan invullen.
+
+**Links — thuisadres:** straat en huisnummer, postcode en woonplaats. De medewerker stelt dit zelf in; het staat in de standplaatsvelden van `profielen` (4.1).
+
+**Links — nieuwe rit:**
+
+| Veld | Type | Opmerking |
+|---|---|---|
+| Datum | Datumkiezer | dd-mm-jjjj, standaard vandaag |
+| Doel van de rit | Tekst | Verplicht. Met privacywaarschuwing |
+| Van | Keuzelijst met zoeken | Thuis bovenaan; daaronder de eerder gebruikte plaatsen, de vaakst gebruikte eerst. Tijdens het typen Nederlandse plaatsnamen uit de PDOK Locatieserver, met de provincie erbij als een naam vaker voorkomt. Een andere plaats kan zoals getypt. Bij een nieuwe rit staat hier al Thuis |
+| Naar | Keuzelijst met zoeken | Idem |
+| Vice versa (heen en terug) | Vinkje | De kilometers tellen dubbel |
+| Kilometers (enkele reis) | Getal | Vult zich vanzelf (5.7), aanpasbaar |
+| **Rit opslaan** | Knop | |
+
+Onder het formulier staat meteen het totaal: `46,8 km · € 11,70`.
+
+**Rechts:** de ritten van de gekozen maand, met pijltjes naar de vorige en volgende maand. Per rit: datum, doel, van – naar, km en bedrag, met wijzigen en verwijderen (na bevestiging). Onderaan het totaal aantal km en het totaalbedrag van de maand.
+
+Twee knoppen voor de gekozen maand, op elk moment, ook halverwege de maand:
+
+- **Afdrukken** — het maandoverzicht op papier, met een kop: naam, maand, thuisadres, vergoeding en de datum van afdrukken. Via het afdrukvenster ook als PDF te bewaren.
+- **Excel downloaden** — één blad met een kop (naam, thuisadres, vergoeding, datum), de kolommen Datum · Doel van de rit · Van · Naar · Heen en terug · Km enkele reis · Km totaal · Vergoeding per km · Bedrag, en een totaalregel. Getallen als getal met Nederlandse opmaak; ingesteld op A4 liggend, één pagina breed.
+
+**Beheerder:** kiest bovenaan van welke medewerker hij de ritten bekijkt, afdrukt en downloadt. Wijzigen doet de medewerker zelf, net als bij de afspraken.
 
 ---
 
@@ -572,6 +659,7 @@ Op elke tabel RLS aanzetten. Basisregels:
 | `contactpersonen` | lezen en schrijven | alles |
 | `afspraken` | alleen waar `medewerker_id` = eigen profiel | alles |
 | `urenregels` | alleen waar `medewerker_id` = eigen profiel | alles |
+| `ritten` | alleen waar `medewerker_id` = eigen profiel | alles |
 | `activiteitsoorten` | alleen lezen | alles |
 | `niet_inzetbare_dagen` | alleen lezen | alles |
 | `instellingen` | alleen lezen | alles |
@@ -600,7 +688,7 @@ Rol bepalen via een `security definer`-functie die `rol` uit `profielen` haalt o
 | **4** | Beheerdersportaal, contracten, urenverantwoording, jaarnormsaldo, export | De uren zijn te verantwoorden |
 | **5** | Niet-inzetbare dagen, handmatige urenregels, eventueel automatische routeberekening | De urentotalen kloppen volledig |
 | **6** | Domein koppelen, TOTP aan, betaalde tiers, AVG-documenten, echte gegevens invoeren | Live |
-| Later | Verlof en ziekte (alleen indien nodig), onkosten- en kilometerdeclaratie | |
+| Later | Verlof en ziekte (alleen indien nodig), onkostendeclaratie | |
 
 **Na elke fase:** commit, en laat de tests van hoofdstuk 5 draaien.
 
@@ -618,13 +706,14 @@ Verplichte geautomatiseerde tests vóór fase 4 als afgerond geldt:
 6. Een jaar waarin een schoolvakantie op een feestdag valt (mag niet dubbel worden afgetrokken)
 7. **Autorisatietest:** medewerker A mag op geen enkele manier bij de afspraken of uren van medewerker B
 8. Afspraken 'anders' (5.1 en 5.3): zelf ingevulde uren tellen mee zonder voorbereiding en reistijd; Niet beschikbaar telt nergens mee, ook niet in de waarschuwing bij meer dan 12 uur
+9. Ritten (5.7): de km bij heen en terug, het bedrag per rit op centen, de voorbeeldmaand, en het terugvinden van een eerder gereden route in beide richtingen. De autorisatietest uit punt 7 geldt ook voor ritten
 
 ---
 
 ## 10. Wat expliciet niet in versie 1 zit
 
 - Verlof-, ziekte- en feestdagregistratie
-- Onkosten- en kilometerdeclaratie
+- Onkostendeclaratie. De rittenregistratie met kilometervergoeding zit er wél in (6.7)
 - Facturatie aan scholen
 - Mobiele app of telefooninvoer
 - Koppeling met Outlook of Google Agenda

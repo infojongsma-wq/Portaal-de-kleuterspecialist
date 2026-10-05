@@ -304,6 +304,69 @@ de knop **Restore** in het Supabase-dashboard.
 
 ---
 
+## Stap 4d — Rittenregistratie (jij, ±15 minuten)
+
+Het tabblad **Ritten** heeft twee dingen nodig. Het eerste is verplicht, het
+tweede maakt het makkelijker.
+
+### 1. De SQL voor de ritten (±2 minuten)
+
+1. Open `supabase/migrations/20261005120000_ritten.sql` op GitHub en kopieer
+   het met **Copy raw file**.
+2. Supabase → **SQL Editor** → **+ New query**. Plak het in dat lege venster,
+   niet onder een oude tekst: dan draait die mee en mislukt alles.
+3. Klik op **Run**. Onderin hoort `Success. No rows returned` te staan. Twee
+   keer draaien kan geen kwaad.
+
+Dit maakt de tabel voor de ritten, met dezelfde beveiliging als de uren:
+iedereen ziet alleen de eigen ritten, de beheerder alles. De
+kilometervergoeding wordt € 0,25 als die nog leeg was; aanpassen kan daarna bij
+**Beheer → Instellingen**. Opnieuw publiceren is niet nodig.
+
+### 2. De Google Maps-sleutel, voor het uitrekenen van de kilometers (±10 minuten)
+
+Zonder sleutel werkt het tabblad ook. De medewerker vult de kilometers dan zelf
+in, en de app onthoudt ze per route.
+
+1. Ga naar **console.cloud.google.com** en log in met een Google-account.
+2. Maak bovenin een **nieuw project** aan, bijvoorbeeld
+   "Portaal De Kleuterspecialist".
+3. **Facturering koppelen.** Google vraagt om een betaalmethode, ook als je
+   binnen het gratis gebruik blijft. Elke maand zijn duizenden afstanden
+   gratis; het portaal vraagt er hooguit enkele tientallen, want een route die
+   al eens is gereden komt uit het geheugen van de app. Zet voor de zekerheid
+   bij **Billing** → **Budgets & alerts** een budget van € 1 met een
+   mailwaarschuwing.
+4. Zet de **Routes API** aan: menu **APIs & Services** → **Library** → zoek
+   "Routes API" → **Enable**.
+5. Maak de sleutel: **APIs & Services** → **Credentials** → **Create
+   credentials** → **API key**. Kopieer hem.
+6. Beperk de sleutel: klik erop, kies bij **API restrictions** voor **Restrict
+   key**, vink alleen **Routes API** aan en klik op **Save**. Laat
+   **Application restrictions** op **None** staan: de vraag komt van de server
+   van Vercel, niet van een vaste website of telefoon.
+7. In Vercel: **Settings** → **Environment Variables** → naam
+   `GOOGLE_MAPS_API_KEY`, de sleutel als waarde, soort **Sensitive**, alle
+   drie de omgevingen aanvinken. Zet er nooit `NEXT_PUBLIC_` voor: dan komt de
+   sleutel in de browser terecht en kan iedereen hem op jouw rekening
+   gebruiken.
+8. **Deployments** → bovenste regel → **⋯** → **Redeploy**, want een variabele
+   gaat pas mee bij een nieuwe bouw.
+
+**Controleren:** log in als beheerder en open `/diagnose`. Bij **Google
+Maps-sleutel (kilometers)** hoort een vinkje te staan, met een proefrit van
+Enschede naar Hengelo. Staat er een kruisje met "Google weigert hem", dan staat
+de Routes API meestal nog niet aan (punt 4), of is de sleutel beperkt tot een
+andere API (punt 6).
+
+**Privacy.** Naar Google gaan alleen plaatsnamen, zoals "Hengelo"; voor Thuis
+alleen de woonplaats, nooit straat en huisnummer. De vraag komt van de server,
+niet uit de browser van de medewerker. De plaatsnamen die de app voorstelt
+tijdens het typen komen van PDOK, de dienst van de Nederlandse overheid, en
+lopen ook via de server.
+
+---
+
 ## Stap 5 — Instellingen die nog kloppen moeten
 
 Voordat je echte uren gaat bijhouden:
@@ -320,8 +383,11 @@ Voordat je echte uren gaat bijhouden:
   Eén uitzondering waarbij ze wél het aantal bepalen: bij een dienstverband dat
   midden in het jaar begint of eindigt, wordt de norm naar rato over de
   inzetbare dagen berekend.
-- **Soorten trainingen.** Vul bij Beheer je eigen trainingen aan, met de juiste
+- **Soorten afspraken.** Vul bij Beheer je eigen soorten aan, met de juiste
   uren per soort.
+- **Kilometervergoeding.** Staat na stap 4d op € 0,25 per km; aan te passen
+  bij **Beheer → Instellingen**. Een rit houdt de vergoeding die gold toen hij
+  werd opgeslagen.
 - **Logo.** Staat erin: `public/logo.svg` is het echte appel-puzzellogo, omgezet
   uit `appel-logo.eps` naar vectorpaden. Wil je het ooit vervangen, dan is dat
   hetzelfde bestand overschrijven; het logo staat op het inlogscherm, in de kop
@@ -368,9 +434,10 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Medewerkers aanmaken en wijzigen in Beheer | gebouwd |
 | Medewerkers uitnodigen per link of e-mail | gebouwd — zie stap 4b, eerst de migratie draaien |
 | Wekker tegen de pauzestand van Supabase | gebouwd — zie stap 4c |
+| Rittenregistratie (tabblad Ritten) | gebouwd — zie stap 4d, eerst de SQL draaien |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
-| Instellingen wijzigen in Beheer | nog te lezen, niet te wijzigen |
+| Instellingen wijzigen in Beheer | alleen de kilometervergoeding; de rest nog te lezen, niet te wijzigen |
 | Wijzigingslog bekijken | triggers vullen hem al, scherm ontbreekt |
 | Autorisatietest uit `SPEC.md` 9.7 | kan nu wel, staat nog open |
 | Nachtelijke back-up naar HiDrive | nog in te richten |

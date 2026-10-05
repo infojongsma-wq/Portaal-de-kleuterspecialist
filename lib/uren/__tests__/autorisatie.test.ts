@@ -2,7 +2,7 @@ import { describe, it } from "vitest";
 
 /**
  * Testeis 7 uit SPEC.md hoofdstuk 9: medewerker A mag op geen enkele manier bij
- * de afspraken of uren van medewerker B.
+ * de afspraken, uren of ritten van medewerker B.
  *
  * Deze test hoort niet in `lib/uren/` thuis — hij toetst de Row Level Security
  * in Postgres, niet de rekenregels. Hij kan pas draaien tegen een echte
@@ -17,6 +17,9 @@ describe("autorisatie: medewerker A versus medewerker B (SPEC.md 9.7)", () => {
   it.todo("medewerker A leest geen urenregels van medewerker B");
   it.todo("medewerker A boekt geen urenregel op naam van medewerker B");
   it.todo("medewerker A leest het contract van medewerker B niet");
+  it.todo("medewerker A leest geen ritten van medewerker B");
+  it.todo("medewerker A wijzigt of verwijdert geen ritten van medewerker B");
+  it.todo("medewerker A zet geen rit op naam van medewerker B");
   it.todo("medewerker A heeft geen toegang tot het wijzigingslog");
-  it.todo("de beheerder leest de afspraken en uren van beide medewerkers");
+  it.todo("de beheerder leest de afspraken, uren en ritten van beide medewerkers");
 });

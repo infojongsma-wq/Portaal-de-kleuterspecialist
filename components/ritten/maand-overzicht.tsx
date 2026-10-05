@@ -106,7 +106,8 @@ export function MaandOverzicht({
 
   return (
     <Card className="gap-0 p-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+      {/* Op papier staat dit al in de kop hieronder. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4 print:hidden">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="icon" asChild className="afdruk-verbergen">
             <Link href={paginaAdres(vorigeMaand)} aria-label="Vorige maand">
@@ -174,7 +175,9 @@ export function MaandOverzicht({
             {ritten.map((rit) => (
               <TableRow
                 key={rit.id}
-                className={cn(rit.id === geselecteerdeRitId && "bg-accent/60")}
+                className={cn(
+                  rit.id === geselecteerdeRitId && "bg-accent/60 print:bg-transparent",
+                )}
               >
                 <TableCell className="tabular-nums">
                   <span className="print:hidden">{formatteerDatumKort(rit.datum)}</span>
