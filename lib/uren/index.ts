@@ -13,4 +13,5 @@ export * from "./constants";
 export * from "./dag";
 export * from "./jaarnorm";
 export * from "./reistijd";
+export * from "./ritten";
 export * from "./types";

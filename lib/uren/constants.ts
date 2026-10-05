@@ -10,6 +10,8 @@
  * | eigen reistijd per dag          | `instellingen.eigen_reistijd_uren_per_dag` |
  * | 1659 uur bij 1,0 fte            | `contracten.norm_fulltime`                 |
  * | schoolvakanties en feestdagen   | `niet_inzetbare_dagen`                     |
+ * | vergoeding per kilometer        | `ritten.vergoeding_per_km`, bij het       |
+ * |                                 | opslaan overgenomen uit `instellingen`     |
  *
  * Zie CLAUDE.md, hoofdstuk "Rekenregels — nooit hardcoderen".
  */
@@ -23,3 +25,9 @@ export const FULLTIME_UREN_PER_WEEK = 40;
 
 /** Uren worden met twee decimalen opgeslagen en getoond (SPEC.md 5.6). */
 export const UREN_DECIMALEN = 2;
+
+/** Kilometers worden met één decimaal opgeslagen en getoond (SPEC.md 5.7). */
+export const KM_DECIMALEN = 1;
+
+/** Bedragen in hele centen (SPEC.md 5.7). */
+export const BEDRAG_DECIMALEN = 2;
