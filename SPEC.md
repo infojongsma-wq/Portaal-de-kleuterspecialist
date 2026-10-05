@@ -610,6 +610,7 @@ Alleen voor `beheerder`:
 - **Urenverantwoording** — per medewerker en per periode: gepland versus gerealiseerd, saldo ten opzichte van de norm, uitsplitsing per categorie, grafiek met normlijn en werkelijke lijn
 - **Soorten afspraken** — per soort instellen of de uren vastliggen (op school: uren op locatie en voorbereiding) of dat de medewerker ze zelf invult (anders: onder welke urencategorie ze vallen en of ze meetellen als werktijd)
 - **Niet-inzetbare dagen** — schoolvakanties en feestdagen per jaar invoeren
+- **Ritten** — per maand per medewerker het aantal ritten, de kilometers en het bedrag, met een totaalregel. Per medewerker **Bekijken** (het tabblad Ritten van die medewerker, waar ook afdrukken kan) en **Excel** (6.7)
 - **Instellingen** — eigen reistijd per dag, kilometervergoeding (aan te passen; geldt voor nieuwe ritten), afronding
 - **Wijzigingslog** — alleen lezen
 - **Export** — Excel en PDF per periode
@@ -628,6 +629,7 @@ Tweekolomsindeling, net als het hoofdscherm. Zo eenvoudig dat iedereen het kan i
 | Doel van de rit | Tekst | Verplicht. Met privacywaarschuwing |
 | Van | Keuzelijst met zoeken | Thuis bovenaan; daaronder de eerder gebruikte plaatsen en adressen, de vaakst gebruikte eerst. Tijdens het typen: scholen uit `klanten` met hun adres, Nederlandse woonplaatsen uit de PDOK Locatieserver (met de provincie erbij als een naam vaker voorkomt) en, zodra er een huisnummer in staat, adressen uit PDOK. Iets anders kan zoals getypt. Bij een nieuwe rit staat hier al Thuis |
 | Naar | Keuzelijst met zoeken | Idem |
+| Adres bij Van en bij Naar | Vier velden: Postcode, Huisnummer, Straat, Plaats | Onder de keuzelijst. Na postcode en huisnummer vult de app straat en plaats in uit de PDOK Locatieserver, zoals bij een webwinkel. Bij Thuis en bij een school staan de velden vast ingevuld; **Ander adres invullen** maakt ze leeg. Een adres over de grens kan met straat, huisnummer en plaats. In de rit komt één regel: "Schoolweg 5, 5678 CD Hengelo" |
 | Vice versa (heen en terug) | Vinkje | De kilometers tellen dubbel |
 | Kilometers (enkele reis) | Getal | Vult zich vanzelf (5.7), aanpasbaar |
 | **Rit opslaan** | Knop | |

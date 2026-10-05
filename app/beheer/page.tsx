@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import { Pagina } from "@/components/pagina";
 import { KilometervergoedingInstelling } from "@/components/beheer/kilometervergoeding-instelling";
 import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
+import { RittenOverzicht } from "@/components/beheer/ritten-overzicht";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,13 +26,26 @@ import {
   formatteerUren,
   naarIsoDatum,
 } from "@/lib/formatteer";
+import { rittenset } from "@/lib/data/ritten";
+import {
+  isMaand,
+  maandVan,
+  vandaagInNederland,
+  verschuifMaand,
+} from "@/lib/ritten/maand";
+import { rittenmaand } from "@/lib/ritten/overzicht";
 import { CATEGORIELABELS } from "@/lib/uren";
 
 export const metadata = { title: "Beheer · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
 
 /** Beheerdersportaal (SPEC.md 6.6). */
-export default async function BeheerPagina() {
+export default async function BeheerPagina({
+  searchParams,
+}: {
+  searchParams: Promise<{ ritmaand?: string }>;
+}) {
+  const parameters = await searchParams;
   const nu = new Date();
   const vandaag = naarIsoDatum(nu);
   const jaar = nu.getFullYear();
@@ -50,14 +64,28 @@ export default async function BeheerPagina() {
     );
   }
 
-  const [ik, instellingen, profielen, nietInzetbareDagen, soorten] =
+  const [ik, instellingen, profielen, nietInzetbareDagen, soorten, ritten] =
     await Promise.all([
       huidigeMedewerker(),
       haalInstellingen(),
       haalProfielen(),
       haalNietInzetbareDagen(),
       haalAlleActiviteitsoorten(),
+      rittenset(),
     ]);
+
+  // De maand van het ritten-overzicht; standaard de huidige.
+  const dezeRitmaand = maandVan(vandaagInNederland());
+  const ritmaand = isMaand(parameters.ritmaand) ? parameters.ritmaand : dezeRitmaand;
+  const rittenOverzicht = rittenmaand(
+    ritten.ritten,
+    ritmaand,
+    profielen.map((profiel) => ({
+      id: profiel.id,
+      naam: `${profiel.voornaam} ${profiel.achternaam}`.trim(),
+      actief: profiel.actief,
+    })),
+  );
 
   // Alles per medewerker vooraf ophalen; in de opmaak zelf valt niet te wachten.
   const medewerkers = await Promise.all(
@@ -231,6 +259,33 @@ export default async function BeheerPagina() {
             </Card>
           );
         })}
+
+        {/* Ritten */}
+        <Card id="ritten" className="scroll-mt-20 p-0">
+          <CardHeader>
+            <CardTitle>Ritten</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Per maand per medewerker: het aantal ritten, de kilometers en de
+              kilometervergoeding. Met Bekijken zie je de ritten zelf en kun je
+              ze afdrukken.
+            </p>
+          </CardHeader>
+          {ritten.beschikbaar ? (
+            <RittenOverzicht
+              overzicht={rittenOverzicht}
+              maand={ritmaand}
+              vorigeMaand={verschuifMaand(ritmaand, -1)}
+              volgendeMaand={verschuifMaand(ritmaand, 1)}
+              dezeMaand={dezeRitmaand}
+              ikId={ik.id}
+            />
+          ) : (
+            <p className="px-6 pb-6 text-sm text-muted-foreground">
+              De rittenregistratie staat nog niet in de database. Zie
+              PUBLICEREN.md, stap 4d.
+            </p>
+          )}
+        </Card>
 
         {/* Medewerkers */}
         <Card className="p-0">
