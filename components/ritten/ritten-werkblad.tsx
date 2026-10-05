@@ -81,7 +81,7 @@ export function RittenWerkblad({
                 vandaag={vandaag}
                 eerderGebruikt={eerderGebruikt}
                 scholen={scholen}
-                thuisOmschrijving={thuisOmschrijving}
+                thuis={thuis}
                 vergoedingPerKm={vergoedingPerKm}
                 onKlaar={() => setTeWijzigen(null)}
               />

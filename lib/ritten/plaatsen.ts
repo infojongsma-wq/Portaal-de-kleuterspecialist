@@ -174,7 +174,7 @@ export interface PlaatsSuggestie {
 }
 
 /** "7551AB" wordt "7551 AB", zoals een postcode op een envelop staat. */
-function netjesPostcode(tekst: string): string {
+export function netjesPostcode(tekst: string): string {
   return tekst.replace(/\b(\d{4})\s?([A-Za-z]{2})\b/g, (_, cijfers: string, letters: string) =>
     `${cijfers} ${letters.toUpperCase()}`,
   );
@@ -287,4 +287,153 @@ export function leesGoogleAfstand(antwoord: unknown): number | null {
   return typeof meters === "number" && Number.isFinite(meters) && meters >= 0
     ? meters
     : null;
+}
+
+// ---------------------------------------------------------------------------
+// Losse adresvelden: postcode, huisnummer, straat, plaats
+// ---------------------------------------------------------------------------
+
+/** De vier velden onder Van en Naar (SPEC.md 6.7). */
+export interface AdresVelden {
+  postcode: string;
+  huisnummer: string;
+  straat: string;
+  plaats: string;
+}
+
+export const LEGE_ADRESVELDEN: AdresVelden = {
+  postcode: "",
+  huisnummer: "",
+  straat: "",
+  plaats: "",
+};
+
+const POSTCODE = /^\d{4}\s?[A-Za-z]{2}$/;
+
+/** Is dit een Nederlandse postcode, zoals 7514 AB of 7514ab? */
+export function isPostcode(tekst: string): boolean {
+  return POSTCODE.test(tekst.trim());
+}
+
+/** Het getal vooraan een huisnummer: "12a" en "12-2" worden 12. */
+export function huisnummerGetal(tekst: string): number | null {
+  const getal = tekst.trim().match(/^\d+/);
+  return getal ? Number(getal[0]) : null;
+}
+
+/**
+ * "Voorbeeldstraat 1a" wordt straat "Voorbeeldstraat" en huisnummer "1a".
+ *
+ * Een toevoeging na een spatie bestaat uit letters ("12 A"); cijfers alleen na
+ * een streepje ("12-2"). Zo blijft "Plein 1944 3" de straat "Plein 1944" met
+ * huisnummer 3.
+ */
+export function splitsStraat(adres: string | null): {
+  straat: string;
+  huisnummer: string;
+} {
+  const schoon = (adres ?? "").trim().replace(/\s+/g, " ");
+  const passend = schoon.match(
+    /^(.*?\D)\s*(\d+(?:-[A-Za-z0-9]{1,4}|\s?[A-Za-z]{1,4})?)$/,
+  );
+  return passend
+    ? { straat: passend[1].trim(), huisnummer: passend[2].trim() }
+    : { straat: schoon, huisnummer: "" };
+}
+
+function veldenVan(adres: Adres | null): AdresVelden {
+  if (!adres) return LEGE_ADRESVELDEN;
+  return {
+    ...splitsStraat(adres.adres),
+    postcode: netjesPostcode(adres.postcode?.trim() ?? ""),
+    plaats: adres.plaats?.trim() ?? "",
+  };
+}
+
+/**
+ * Een opgeslagen Van of Naar terug in losse velden, bijvoorbeeld om een rit te
+ * wijzigen. Thuis en een school uit Klanten krijgen hun eigen adres; een
+ * getypt adres wordt ontleed; een plaatsnaam komt in het veld Plaats.
+ */
+export function adresVelden(waarde: string, boek: Adresboek): AdresVelden {
+  const schoon = waarde.trim();
+  if (!schoon) return LEGE_ADRESVELDEN;
+  if (isThuis(schoon)) return veldenVan(boek.thuis);
+
+  const school = boek.scholen.find((kandidaat) =>
+    zelfdePlaats(schoolLabel(kandidaat), schoon),
+  );
+  if (school) return veldenVan(school);
+
+  // "Schoolweg 5, 5678 CD Hengelo"
+  const metPostcode = schoon.match(/^(.+?),\s*(\d{4}\s?[A-Za-z]{2})\s+(.+)$/);
+  if (metPostcode) {
+    return {
+      ...splitsStraat(metPostcode[1]),
+      postcode: netjesPostcode(metPostcode[2]),
+      plaats: metPostcode[3].trim(),
+    };
+  }
+
+  // "Schoolweg 5, Hengelo": alleen als er een huisnummer in het eerste deel
+  // staat. Anders is "Hengelo, Gelderland" ineens een straat.
+  const zonderPostcode = schoon.match(/^(.+?\d.*?),\s*(.+)$/);
+  if (zonderPostcode) {
+    return {
+      ...splitsStraat(zonderPostcode[1]),
+      postcode: "",
+      plaats: zonderPostcode[2].trim(),
+    };
+  }
+
+  return { ...LEGE_ADRESVELDEN, plaats: schoon };
+}
+
+/**
+ * De losse velden samen tot één adres, zoals het in de rit komt te staan:
+ * "Schoolweg 5, 5678 CD Hengelo". Zonder plaats is het nog geen adres.
+ */
+export function samengesteldAdres(velden: AdresVelden): string | null {
+  const plaats = velden.plaats.trim();
+  if (!plaats) return null;
+  const straatregel = [velden.straat.trim(), velden.huisnummer.trim()]
+    .filter(Boolean)
+    .join(" ");
+  const plaatsregel = [netjesPostcode(velden.postcode.trim()), plaats]
+    .filter(Boolean)
+    .join(" ");
+  return [straatregel, plaatsregel].filter(Boolean).join(", ");
+}
+
+/**
+ * Leest straat en plaats uit het antwoord van de PDOK Locatieserver op een
+ * vraag naar postcode en huisnummer. Alleen een treffer met precies die
+ * postcode en dat huisnummer telt; anders `null`.
+ */
+export function leesPdokAdres(
+  antwoord: unknown,
+  postcode: string,
+  huisnummer: number,
+): { straat: string; plaats: string } | null {
+  const documenten = (antwoord as { response?: { docs?: unknown } } | null)
+    ?.response?.docs;
+  if (!Array.isArray(documenten)) return null;
+
+  const gezochtePostcode = postcode.replace(/\s+/g, "").toUpperCase();
+
+  for (const document of documenten) {
+    const velden = (document ?? {}) as Record<string, unknown>;
+    const docPostcode = String(velden.postcode ?? "")
+      .replace(/\s+/g, "")
+      .toUpperCase();
+    const docNummer = Number(velden.huisnummer);
+    if (docPostcode !== gezochtePostcode || docNummer !== huisnummer) continue;
+
+    const straat = typeof velden.straatnaam === "string" ? velden.straatnaam.trim() : "";
+    const plaats =
+      typeof velden.woonplaatsnaam === "string" ? velden.woonplaatsnaam.trim() : "";
+    if (straat && plaats) return { straat, plaats };
+  }
+
+  return null;
 }

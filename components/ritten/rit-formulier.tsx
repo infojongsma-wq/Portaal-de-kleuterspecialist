@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowDown, Loader2, Save } from "lucide-react";
 
 import { bewaarRit, zoekAfstand, type Afstand } from "@/app/ritten/acties";
-import { PlaatsKiezer } from "@/components/ritten/plaats-kiezer";
+import { AdresInvoer } from "@/components/ritten/adres-invoer";
 import { PrivacyWaarschuwing } from "@/components/privacy-waarschuwing";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,9 +15,13 @@ import { Datumveld } from "@/components/ui/datumveld";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Rit } from "@/lib/data/types";
-import type { School } from "@/lib/ritten/plaatsen";
 import { formatteerBedrag, formatteerKm } from "@/lib/formatteer";
-import { THUIS } from "@/lib/ritten/plaatsen";
+import {
+  adresInEenRegel,
+  THUIS,
+  type Adres,
+  type School,
+} from "@/lib/ritten/plaatsen";
 import { bedragVanRit, kmVanRit } from "@/lib/uren";
 import {
   leesDecimaal,
@@ -71,7 +75,7 @@ export function RitFormulier({
   vandaag,
   eerderGebruikt,
   scholen,
-  thuisOmschrijving,
+  thuis,
   vergoedingPerKm,
   onKlaar,
 }: {
@@ -81,7 +85,8 @@ export function RitFormulier({
   eerderGebruikt: string[];
   /** Scholen uit Klanten, met hun adres, om bij Van en Naar uit te kiezen. */
   scholen: School[];
-  thuisOmschrijving: string | null;
+  /** Het thuisadres, of `null` als het nog niet is ingesteld. */
+  thuis: Adres | null;
   /** De vergoeding die nu geldt, of `null` als die nog niet is ingesteld. */
   vergoedingPerKm: number | null;
   onKlaar: () => void;
@@ -90,7 +95,7 @@ export function RitFormulier({
   const [melding, setMelding] = React.useState<string | null>(null);
   const [afstand, setAfstand] = React.useState<Afstandstatus>({ soort: "leeg" });
   const verzoek = React.useRef(0);
-  const thuisIngesteld = thuisOmschrijving !== null;
+  const thuisIngesteld = thuis !== null && adresInEenRegel(thuis) !== null;
 
   const {
     control,
@@ -238,29 +243,27 @@ export function RitFormulier({
       </Veld>
 
       <div className="grid gap-2">
-        <Veld label="Van" htmlFor="rit-van" fout={errors.vanPlaats?.message}>
-          <PlaatsKiezer
-            id="rit-van"
-            waarde={vanPlaats}
-            onKies={kiesVan}
-            eerderGebruikt={eerderGebruikt}
-            scholen={scholen}
-            thuisOmschrijving={thuisOmschrijving}
-            foutmelding={errors.vanPlaats?.message}
-          />
-        </Veld>
+        <AdresInvoer
+          id="rit-van"
+          label="Van"
+          waarde={vanPlaats}
+          onWijzig={kiesVan}
+          eerderGebruikt={eerderGebruikt}
+          scholen={scholen}
+          thuis={thuis}
+          foutmelding={errors.vanPlaats?.message}
+        />
         <ArrowDown className="mx-auto size-4 text-muted-foreground" aria-hidden />
-        <Veld label="Naar" htmlFor="rit-naar" fout={errors.naarPlaats?.message}>
-          <PlaatsKiezer
-            id="rit-naar"
-            waarde={naarPlaats}
-            onKies={kiesNaar}
-            eerderGebruikt={eerderGebruikt}
-            scholen={scholen}
-            thuisOmschrijving={thuisOmschrijving}
-            foutmelding={errors.naarPlaats?.message}
-          />
-        </Veld>
+        <AdresInvoer
+          id="rit-naar"
+          label="Naar"
+          waarde={naarPlaats}
+          onWijzig={kiesNaar}
+          eerderGebruikt={eerderGebruikt}
+          scholen={scholen}
+          thuis={thuis}
+          foutmelding={errors.naarPlaats?.message}
+        />
       </div>
 
       <div className="flex items-start gap-2.5 rounded-md border p-3">

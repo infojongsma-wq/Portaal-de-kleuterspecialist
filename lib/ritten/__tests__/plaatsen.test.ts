@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adresVelden,
   eerderGebruiktePlaatsen,
+  huisnummerGetal,
+  isPostcode,
   isThuis,
+  LEGE_ADRESVELDEN,
+  leesPdokAdres,
+  samengesteldAdres,
+  splitsStraat,
   leesGoogleAfstand,
   leesPdokSuggesties,
   onthoudenAfstand,
@@ -266,5 +273,98 @@ describe("antwoord van Google lezen", () => {
   it("geeft null bij een onzinnige afstand", () => {
     expect(leesGoogleAfstand({ routes: [{ distanceMeters: "ver" }] })).toBeNull();
     expect(leesGoogleAfstand({ routes: [{ distanceMeters: -5 }] })).toBeNull();
+  });
+});
+
+describe("losse adresvelden", () => {
+  it("zet Thuis om in de velden van het thuisadres", () => {
+    expect(adresVelden("Thuis", BOEK)).toEqual({
+      straat: "Voorbeeldstraat",
+      huisnummer: "1",
+      postcode: "1234 AB",
+      plaats: "Proefdorp",
+    });
+  });
+
+  it("zet een school om in de velden van het schooladres", () => {
+    expect(adresVelden("De Proeftuin, Schoolweg 5, 5678 CD Hengelo", BOEK)).toEqual({
+      straat: "Schoolweg",
+      huisnummer: "5",
+      postcode: "5678 CD",
+      plaats: "Hengelo",
+    });
+  });
+
+  it("ontleedt een getypt adres met en zonder postcode", () => {
+    expect(adresVelden("Kerkplein 2a, 4321ef Almelo", BOEK)).toEqual({
+      straat: "Kerkplein",
+      huisnummer: "2a",
+      postcode: "4321 EF",
+      plaats: "Almelo",
+    });
+    expect(adresVelden("Lange Laan 12-2, Deventer", BOEK)).toEqual({
+      straat: "Lange Laan",
+      huisnummer: "12-2",
+      postcode: "",
+      plaats: "Deventer",
+    });
+  });
+
+  it("zet een plaatsnaam in het veld Plaats", () => {
+    expect(adresVelden("Zwolle", BOEK)).toEqual({ ...LEGE_ADRESVELDEN, plaats: "Zwolle" });
+    expect(adresVelden("Hengelo, Gelderland", BOEK).plaats).toBe("Hengelo, Gelderland");
+  });
+
+  it("voegt de velden samen tot één adres", () => {
+    expect(
+      samengesteldAdres({ straat: "Schoolweg", huisnummer: "5", postcode: "5678cd", plaats: "Hengelo" }),
+    ).toBe("Schoolweg 5, 5678 CD Hengelo");
+    expect(
+      samengesteldAdres({ straat: "Schoolweg", huisnummer: "5", postcode: "", plaats: "Hengelo" }),
+    ).toBe("Schoolweg 5, Hengelo");
+    expect(samengesteldAdres({ ...LEGE_ADRESVELDEN, plaats: "Zwolle" })).toBe("Zwolle");
+  });
+
+  it("maakt zonder plaats nog geen adres", () => {
+    expect(
+      samengesteldAdres({ straat: "Schoolweg", huisnummer: "5", postcode: "5678 CD", plaats: " " }),
+    ).toBeNull();
+  });
+
+  it("splitst straat en huisnummer, ook met een toevoeging", () => {
+    expect(splitsStraat("Kerkstraat 12 A")).toEqual({ straat: "Kerkstraat", huisnummer: "12 A" });
+    expect(splitsStraat("Plein 1944 3")).toEqual({ straat: "Plein 1944", huisnummer: "3" });
+    expect(splitsStraat("Markt")).toEqual({ straat: "Markt", huisnummer: "" });
+  });
+
+  it("herkent een postcode en het getal van een huisnummer", () => {
+    expect(isPostcode("7514 AB")).toBe(true);
+    expect(isPostcode("7514ab")).toBe(true);
+    expect(isPostcode("751 AB")).toBe(false);
+    expect(huisnummerGetal("12a")).toBe(12);
+    expect(huisnummerGetal("a12")).toBeNull();
+  });
+});
+
+describe("adres opzoeken bij PDOK", () => {
+  const antwoord = {
+    response: {
+      docs: [
+        { postcode: "5678CD", huisnummer: 7, straatnaam: "Andere Weg", woonplaatsnaam: "Hengelo" },
+        { postcode: "5678CD", huisnummer: 5, straatnaam: "Schoolweg", woonplaatsnaam: "Hengelo" },
+      ],
+    },
+  };
+
+  it("neemt de treffer met precies die postcode en dat huisnummer", () => {
+    expect(leesPdokAdres(antwoord, "5678 cd", 5)).toEqual({
+      straat: "Schoolweg",
+      plaats: "Hengelo",
+    });
+  });
+
+  it("geeft niets als het adres er niet tussen zit", () => {
+    expect(leesPdokAdres(antwoord, "5678 CD", 9)).toBeNull();
+    expect(leesPdokAdres({}, "5678 CD", 5)).toBeNull();
   });
 });
