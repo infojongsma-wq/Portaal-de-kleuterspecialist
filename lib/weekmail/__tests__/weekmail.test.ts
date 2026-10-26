@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TrainingenVanMedewerker } from "@/lib/trainingen/gedaan";
-import { veiligeHtml, weekmailBericht } from "../bericht";
+import { adresVoorInMail, veiligeHtml, weekmailBericht } from "../bericht";
 import {
   isWeekmailMoment,
   tijdstipInNederland,
@@ -124,6 +124,20 @@ describe("inhoud van de weekmail (SPEC.md 6.6)", () => {
     expect(html).toContain("Kindcentrum &lt;Voorbeeld&gt; &amp; Co");
     expect(html).not.toContain("<Voorbeeld>");
     expect(veiligeHtml(`"a" & 'b'`)).toBe("&quot;a&quot; &amp; &#39;b&#39;");
+  });
+
+  it("zet geen link naar vercel.app in de mail; spamfilters weigeren die", () => {
+    const { tekst, html } = weekmailBericht({
+      ...basis,
+      portaalAdres: "https://portaal-voorbeeld.vercel.app",
+    });
+    expect(tekst).not.toContain("vercel.app");
+    expect(html).not.toContain("vercel.app");
+    expect(tekst).toContain("Beheer → Trainingen gedaan");
+    expect(adresVoorInMail("https://vercel.app")).toBeNull();
+    expect(adresVoorInMail("http://localhost:3000")).toBeNull();
+    expect(adresVoorInMail("geen adres")).toBeNull();
+    expect(adresVoorInMail("https://portaal.voorbeeld.nl")).toBe("https://portaal.voorbeeld.nl");
   });
 
   it("werkt ook zonder adres van het portaal", () => {

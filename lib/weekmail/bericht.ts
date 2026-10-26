@@ -29,7 +29,10 @@ export interface WeekmailInvoer {
   week: string;
   /** Is er nog nooit een weekmail verstuurd? */
   eerste: boolean;
-  /** Bijvoorbeeld `https://portaal.dekleuterspecialist.nl`, of `null`. */
+  /**
+   * Bijvoorbeeld `https://portaal.dekleuterspecialist.nl`, of `null`. Een
+   * adres op vercel.app komt niet in de mail; zie `adresVoorInMail`.
+   */
   portaalAdres: string | null;
 }
 
@@ -45,6 +48,26 @@ function trainingTekst(training: GedaneTraining): string {
 
 function aantalTekst(aantal: number): string {
   return aantal === 1 ? "1 training" : `${aantal} trainingen`;
+}
+
+/**
+ * Het adres van het portaal voor de link in de mail, of `null`.
+ *
+ * Een adres op vercel.app gaat er niet in. Oplichters gebruiken zulke adressen
+ * veel, en spamfilters weigeren daarom mail met zo'n link; dat van Strato met
+ * "Sending of SPAM is not permitted! (B-URL)". Met een eigen domein voor het
+ * portaal (SPEC.md 3) komt de link vanzelf terug.
+ */
+export function adresVoorInMail(adres: string | null): string | null {
+  if (!adres) return null;
+  try {
+    const host = new URL(adres).hostname;
+    const geweigerd =
+      host === "localhost" || host === "vercel.app" || host.endsWith(".vercel.app");
+    return geweigerd ? null : adres;
+  } catch {
+    return null;
+  }
 }
 
 /** Tekens die in HTML iets betekenen, onschadelijk maken. */
@@ -73,9 +96,8 @@ export function weekmailBericht(invoer: WeekmailInvoer): WeekmailBericht {
         ? "Dit is de eerste weekmail. Hierin staan alle trainingen die tot nu toe als gedaan zijn afgevinkt."
         : "Sinds de vorige weekmail zijn deze trainingen als gedaan afgevinkt.";
 
-  const link = invoer.portaalAdres
-    ? `${invoer.portaalAdres.replace(/\/$/, "")}/beheer#trainingen`
-    : null;
+  const basis = adresVoorInMail(invoer.portaalAdres);
+  const link = basis ? `${basis.replace(/\/$/, "")}/beheer#trainingen` : null;
   const oproep =
     aantal > 0
       ? "Vink in het portaal bij Beheer → Trainingen gedaan aan wanneer je de factuur hebt verstuurd."
