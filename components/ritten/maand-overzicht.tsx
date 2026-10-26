@@ -40,15 +40,24 @@ import {
   formatteerDatum,
   formatteerDatumKort,
   formatteerKm,
+  formatteerUrenKlok,
 } from "@/lib/formatteer";
+import { naarRitReistijdInvoer } from "@/lib/ritten/reistijd";
 import { maandNaam } from "@/lib/ritten/maand";
-import { bedragVanRit, kmVanRit, rittenTotaal } from "@/lib/uren";
+import {
+  bedragVanRit,
+  kmVanRit,
+  reistijdVanRitMinuten,
+  reistijdVanRitten,
+  rittenTotaal,
+} from "@/lib/uren";
 import { cn } from "@/lib/utils";
 
 /**
  * De ritten van één maand, met de totalen, en de knoppen om de maand af te
  * drukken of als Excel te downloaden (SPEC.md 6.7). Kan op elk moment, ook
- * halverwege de maand.
+ * halverwege de maand. Per rit staat de reistijd erbij, en onderaan wat
+ * daarvan als werktijd telt (SPEC.md 5.2).
  */
 export function MaandOverzicht({
   ritten,
@@ -61,6 +70,7 @@ export function MaandOverzicht({
   naam,
   thuisadres,
   vergoedingPerKm,
+  eigenReistijdUrenPerDag,
   vandaag,
   magWijzigen,
   geselecteerdeRitId,
@@ -78,6 +88,8 @@ export function MaandOverzicht({
   naam: string;
   thuisadres: string | null;
   vergoedingPerKm: number | null;
+  /** Uit `instellingen`; voor de reistijd die als werktijd telt. */
+  eigenReistijdUrenPerDag: number;
   vandaag: string;
   magWijzigen: boolean;
   geselecteerdeRitId: string | null;
@@ -88,6 +100,10 @@ export function MaandOverzicht({
   const [melding, setMelding] = React.useState<string | null>(null);
 
   const totaal = rittenTotaal(ritten);
+  const reistijd = reistijdVanRitten(
+    ritten.map(naarRitReistijdInvoer),
+    eigenReistijdUrenPerDag,
+  );
   const naamVanMaand = maandNaam(maand);
 
   // Staat er in de hele maand één en dezelfde vergoeding, dan in de kop; anders
@@ -164,6 +180,7 @@ export function MaandOverzicht({
               <TableHead>Doel van de rit</TableHead>
               <TableHead>Van – naar</TableHead>
               <TableHead className="text-right">Km</TableHead>
+              <TableHead className="text-right">Reistijd</TableHead>
               {vergoedingInKop == null ? (
                 <TableHead className="text-right">Per km</TableHead>
               ) : null}
@@ -202,6 +219,9 @@ export function MaandOverzicht({
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right tabular-nums">
                   {formatteerKm(kmVanRit(rit))}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
+                  <Reistijdcel rit={rit} />
                 </TableCell>
                 {vergoedingInKop == null ? (
                   <TableCell className="whitespace-nowrap text-right tabular-nums">
@@ -250,6 +270,9 @@ export function MaandOverzicht({
               <TableCell className="whitespace-nowrap text-right tabular-nums">
                 {formatteerKm(totaal.km)} km
               </TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">
+                {formatteerUrenKlok(reistijd.brutoUren)}
+              </TableCell>
               {vergoedingInKop == null ? <TableCell /> : null}
               <TableCell className="whitespace-nowrap text-right tabular-nums">
                 {formatteerBedrag(totaal.bedrag)}
@@ -259,6 +282,23 @@ export function MaandOverzicht({
           </TableFooter>
         </Table>
       )}
+
+      {ritten.length > 0 ? (
+        <p className="border-t px-4 py-3 text-sm">
+          <span className="font-medium">Reistijd {naamVanMaand}:</span>{" "}
+          {formatteerUrenKlok(reistijd.brutoUren)} in totaal, min{" "}
+          {formatteerUrenKlok(reistijd.eigenTijdUren)} eigen tijd ={" "}
+          <span className="font-semibold">
+            {formatteerUrenKlok(reistijd.werktijdUren)} telt als werktijd
+          </span>
+          <span className="block text-xs text-muted-foreground">
+            Eigen tijd: een uur per enkele reis, met hooguit 2 uur per dag.
+            {reistijd.aantalZonderReistijd > 0
+              ? ` ${reistijd.aantalZonderReistijd === 1 ? "1 rit heeft" : `${reistijd.aantalZonderReistijd} ritten hebben`} nog geen reistijd en ${reistijd.aantalZonderReistijd === 1 ? "telt" : "tellen"} nog niet mee.`
+              : ""}
+          </span>
+        </p>
+      ) : null}
 
       {melding ? (
         <p className="afdruk-verbergen px-4 pb-4 text-sm text-muted-foreground" role="status">
@@ -292,5 +332,21 @@ export function MaandOverzicht({
         </DialogContent>
       </Dialog>
     </Card>
+  );
+}
+
+/** De reistijd van één rit, met "aangepast" bij een afwijkende reistijd. */
+function Reistijdcel({ rit }: { rit: Rit }) {
+  const minuten = reistijdVanRitMinuten(naarRitReistijdInvoer(rit));
+  if (minuten === null) {
+    return <span className="text-amber-700">nog onbekend</span>;
+  }
+  return (
+    <>
+      {formatteerUrenKlok(minuten / 60)}
+      {rit.afwijkendeReistijdMinuten !== null ? (
+        <span className="block text-xs text-muted-foreground">aangepast</span>
+      ) : null}
+    </>
   );
 }

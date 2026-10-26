@@ -58,7 +58,7 @@ export default async function RittenPagina({
   return (
     <Pagina
       titel="Ritten"
-      omschrijving="Houd hier je gereden kilometers bij. Per maand kun je ze afdrukken of als Excel downloaden, ook halverwege de maand."
+      omschrijving="Houd hier je gereden kilometers en je reistijd bij. De reistijd telt mee voor je uren. Per maand kun je de ritten afdrukken of als Excel downloaden, ook halverwege de maand."
       acties={
         isBeheerder ? (
           <MedewerkerKiezer
@@ -97,6 +97,14 @@ export default async function RittenPagina({
           dezeMaand={dezeMaand}
           medewerkerParameter={magWijzigen ? null : bekeken.id}
           vergoedingPerKm={gegevens.instellingen.kilometervergoedingPerKm}
+          eigenReistijdUrenPerDag={gegevens.instellingen.eigenReistijdUrenPerDag}
+          zonderReistijd={
+            vanBekeken.filter(
+              (rit) =>
+                rit.reisduurEnkelMinuten === null &&
+                rit.afwijkendeReistijdMinuten === null,
+            ).length
+          }
           vandaag={vandaag}
         />
       ) : (

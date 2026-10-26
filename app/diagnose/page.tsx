@@ -3,9 +3,9 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatteerKm } from "@/lib/formatteer";
 import {
-  afstandInMeters,
   googleSleutel,
   RouteplannerFout,
+  routeVan,
 } from "@/lib/ritten/google";
 import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { metersNaarKm } from "@/lib/uren";
@@ -421,7 +421,7 @@ async function weekmailControle(): Promise<Uitkomst> {
  * Enschede naar Hengelo: twee plaatsnamen, geen persoonsgegevens.
  */
 async function googleControle(): Promise<Uitkomst> {
-  const naam = "Google Maps-sleutel (kilometers)";
+  const naam = "Google Maps-sleutel (kilometers en reistijd)";
   const sleutel = googleSleutel();
 
   if (!sleutel) {
@@ -434,12 +434,16 @@ async function googleControle(): Promise<Uitkomst> {
   }
 
   try {
-    const meters = await afstandInMeters("Enschede", "Hengelo, Overijssel", sleutel);
-    return meters !== null
+    const route = await routeVan("Enschede", "Hengelo, Overijssel", sleutel);
+    return route !== null
       ? {
           naam,
           goed: true,
-          toelichting: `Aanwezig en geaccepteerd. Proefrit Enschede naar Hengelo: ${formatteerKm(metersNaarKm(meters))} km.`,
+          toelichting: `Aanwezig en geaccepteerd. Proefrit Enschede naar Hengelo: ${formatteerKm(metersNaarKm(route.meters))} km${
+            route.seconden !== null
+              ? `, ${Math.round(route.seconden / 60)} minuten zonder files`
+              : ""
+          }.`,
         }
       : {
           naam,

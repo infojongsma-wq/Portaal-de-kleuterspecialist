@@ -105,6 +105,38 @@ export function reistijdVanDag(
 }
 
 /**
+ * De reistijd van een reeks ritten, bijvoorbeeld een maand: per dag
+ * uitgerekend zoals in `reistijdVanDag` en dan opgeteld. De eigen tijd gaat er
+ * dus per dag af, niet één keer over de hele maand.
+ */
+export function reistijdVanRitten(
+  ritten: RitReistijdInvoer[],
+  eigenReistijdUrenPerDag: number,
+): ReistijdVanDag {
+  const dagen = [...new Set(ritten.map((rit) => rit.datum))].map((datum) =>
+    reistijdVanDag(datum, ritten, eigenReistijdUrenPerDag),
+  );
+  const som = (veld: keyof ReistijdVanDag) =>
+    dagen.reduce((totaal, dag) => totaal + dag[veld], 0);
+
+  return {
+    brutoUren: afrondUren(som("brutoUren")),
+    eigenTijdUren: afrondUren(som("eigenTijdUren")),
+    werktijdUren: afrondUren(som("werktijdUren")),
+    aantalRitten: som("aantalRitten"),
+    aantalZonderReistijd: som("aantalZonderReistijd"),
+  };
+}
+
+/** Seconden van de routeplanner naar minuten, afgerond zoals 5.6 voorschrijft. */
+export function secondenNaarReisduurMinuten(
+  seconden: number,
+  afrondingMinuten: number,
+): number {
+  return afrondAutomatischeReistijdMinuten(seconden / 60, afrondingMinuten);
+}
+
+/**
  * Rondt de berekende reisduur af vóór opslag (SPEC.md 5.6), op
  * `instellingen.reistijd_afronding_minuten`. Niet voor een reistijd die de
  * medewerker zelf invult; die blijft zoals ingevuld.

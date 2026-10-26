@@ -107,6 +107,8 @@ export interface EerdereRit {
   vanPlaats: string;
   naarPlaats: string;
   kmEnkel: number;
+  /** De berekende reisduur van de enkele reis, als die bekend is. */
+  reisduurEnkelMinuten?: number | null;
 }
 
 /**
@@ -270,23 +272,35 @@ export function leesPdokSuggesties(antwoord: unknown): PlaatsSuggestie[] {
   return [...adressen, ...woonplaatsen];
 }
 
+export interface GoogleRoute {
+  meters: number;
+  /** Reisduur zonder files; `null` als Google die niet meegaf. */
+  seconden: number | null;
+}
+
 /**
- * Leest de afstand in meters uit het antwoord van de Google Routes API
+ * Leest de afstand en de reisduur uit het antwoord van de Google Routes API
  * (`computeRoutes`), of `null` als er geen route is gevonden.
  *
  * Google laat een waarde van nul weg uit het antwoord. Een route zonder
  * `distanceMeters` is dus een route van 0 meter: begin en eind liggen op
- * hetzelfde punt.
+ * hetzelfde punt. De reisduur staat er als tekst in, zoals `"2780s"`.
  */
-export function leesGoogleAfstand(antwoord: unknown): number | null {
+export function leesGoogleRoute(antwoord: unknown): GoogleRoute | null {
   const routes = (antwoord as { routes?: unknown } | null)?.routes;
   if (!Array.isArray(routes) || routes.length === 0) return null;
 
-  const meters = (routes[0] as { distanceMeters?: unknown })?.distanceMeters;
-  if (meters === undefined) return 0;
-  return typeof meters === "number" && Number.isFinite(meters) && meters >= 0
-    ? meters
-    : null;
+  const route = routes[0] as { distanceMeters?: unknown; duration?: unknown };
+  const meters = route?.distanceMeters ?? 0;
+  if (typeof meters !== "number" || !Number.isFinite(meters) || meters < 0) {
+    return null;
+  }
+
+  const duur =
+    typeof route.duration === "string"
+      ? /^(\d+(?:\.\d+)?)s$/.exec(route.duration.trim())
+      : null;
+  return { meters, seconden: duur ? Number(duur[1]) : null };
 }
 
 // ---------------------------------------------------------------------------

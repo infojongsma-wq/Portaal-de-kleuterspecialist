@@ -10,7 +10,7 @@ import {
   leesPdokAdres,
   samengesteldAdres,
   splitsStraat,
-  leesGoogleAfstand,
+  leesGoogleRoute,
   leesPdokSuggesties,
   onthoudenAfstand,
   routeAdres,
@@ -253,26 +253,39 @@ describe("antwoord van PDOK lezen", () => {
 });
 
 describe("antwoord van Google lezen", () => {
-  it("leest de afstand in meters", () => {
-    expect(leesGoogleAfstand({ routes: [{ distanceMeters: 10_437 }] })).toBe(
-      10_437,
-    );
+  it("leest de afstand in meters en de reisduur in seconden", () => {
+    expect(
+      leesGoogleRoute({ routes: [{ distanceMeters: 10_437, duration: "780s" }] }),
+    ).toEqual({ meters: 10_437, seconden: 780 });
   });
 
   it("leest een route zonder afstand als 0 meter", () => {
     // Google laat nulwaarden weg uit het antwoord.
-    expect(leesGoogleAfstand({ routes: [{ duration: "0s" }] })).toBe(0);
+    expect(leesGoogleRoute({ routes: [{ duration: "0s" }] })).toEqual({
+      meters: 0,
+      seconden: 0,
+    });
+  });
+
+  it("geeft geen reisduur als die ontbreekt of onleesbaar is", () => {
+    expect(leesGoogleRoute({ routes: [{ distanceMeters: 500 }] })).toEqual({
+      meters: 500,
+      seconden: null,
+    });
+    expect(
+      leesGoogleRoute({ routes: [{ distanceMeters: 500, duration: "een kwartier" }] }),
+    ).toEqual({ meters: 500, seconden: null });
   });
 
   it("geeft null als er geen route is", () => {
-    expect(leesGoogleAfstand({})).toBeNull();
-    expect(leesGoogleAfstand({ routes: [] })).toBeNull();
-    expect(leesGoogleAfstand(null)).toBeNull();
+    expect(leesGoogleRoute({})).toBeNull();
+    expect(leesGoogleRoute({ routes: [] })).toBeNull();
+    expect(leesGoogleRoute(null)).toBeNull();
   });
 
   it("geeft null bij een onzinnige afstand", () => {
-    expect(leesGoogleAfstand({ routes: [{ distanceMeters: "ver" }] })).toBeNull();
-    expect(leesGoogleAfstand({ routes: [{ distanceMeters: -5 }] })).toBeNull();
+    expect(leesGoogleRoute({ routes: [{ distanceMeters: "ver" }] })).toBeNull();
+    expect(leesGoogleRoute({ routes: [{ distanceMeters: -5 }] })).toBeNull();
   });
 });
 

@@ -39,6 +39,7 @@ const INVOER: RittenExport = {
     rit({ id: "3", datum: "2026-10-19", naarPlaats: "Zwolle", heenEnTerug: false, kmEnkel: 10.1 }),
   ],
   huidigeVergoeding: 0.25,
+  eigenReistijdUrenPerDag: 2.0,
   vandaag: "2026-10-20",
 };
 
@@ -94,6 +95,46 @@ describe("Excel met ritten (SPEC.md 6.7)", () => {
       formula: `SUM(I${KOPREGEL + 1}:I${KOPREGEL + 3})`,
       result: 16.76,
     });
+  });
+
+  it("zet per rit de reistijd in uren, en of die is aangepast", async () => {
+    const blad = await heenEnWeer({
+      ...INVOER,
+      ritten: [
+        rit({ id: "1", reisduurEnkelMinuten: 45 }), // heen en terug: 1,50
+        rit({ id: "2", afwijkendeReistijdMinuten: 165 }), // 2,75
+        rit({ id: "3", reisduurEnkelMinuten: null }),
+      ],
+    });
+    expect(blad.getRow(KOPREGEL + 1).getCell(10).value).toBe(1.5);
+    expect(blad.getRow(KOPREGEL + 1).getCell(11).value).toBe("nee");
+    expect(blad.getRow(KOPREGEL + 2).getCell(10).value).toBe(2.75);
+    expect(blad.getRow(KOPREGEL + 2).getCell(11).value).toBe("ja");
+    expect(blad.getRow(KOPREGEL + 3).getCell(10).value).toBeNull();
+    expect(blad.getRow(KOPREGEL + 3).getCell(11).value).toBe("nog onbekend");
+  });
+
+  it("zet onder de tabel wat van de reistijd als werktijd telt", async () => {
+    const blad = await heenEnWeer({
+      ...INVOER,
+      ritten: [
+        // Twee dagen met elk 2 × 90 minuten: per dag 3,00 − 2,00 = 1,00.
+        rit({ id: "1", datum: "2026-10-05", reisduurEnkelMinuten: 90 }),
+        rit({ id: "2", datum: "2026-10-06", reisduurEnkelMinuten: 90 }),
+      ],
+    });
+    const totaal = blad.getRow(KOPREGEL + 3);
+    expect(totaal.getCell(10).value).toMatchObject({
+      formula: `SUM(J${KOPREGEL + 1}:J${KOPREGEL + 2})`,
+      result: 6,
+    });
+    expect(blad.getRow(KOPREGEL + 5).getCell(2).value).toBe("Reistijd in totaal");
+    expect(blad.getRow(KOPREGEL + 5).getCell(10).value).toBe(6);
+    expect(blad.getRow(KOPREGEL + 6).getCell(10).value).toBe(4);
+    expect(blad.getRow(KOPREGEL + 7).getCell(2).value).toBe(
+      "Reistijd die als werktijd telt",
+    );
+    expect(blad.getRow(KOPREGEL + 7).getCell(10).value).toBe(2);
   });
 
   it("is ingesteld om op één A4 in de breedte te printen", async () => {

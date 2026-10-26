@@ -54,6 +54,7 @@ export async function GET(verzoek: Request) {
       inMaand(rit.datum, maand),
     ),
     huidigeVergoeding: gegevens.instellingen.kilometervergoedingPerKm,
+    eigenReistijdUrenPerDag: gegevens.instellingen.eigenReistijdUrenPerDag,
     vandaag,
   });
 

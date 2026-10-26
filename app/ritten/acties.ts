@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache";
 
 import { rittenset, rittenVan } from "@/lib/data/ritten";
+import type { Klant, Profiel, Rit } from "@/lib/data/types";
 import { werkset } from "@/lib/data/werkset";
 import { formatteerDatum } from "@/lib/formatteer";
 import {
-  afstandInMeters,
   googleSleutel,
   RouteplannerFout,
+  routeVan,
 } from "@/lib/ritten/google";
 import {
   isThuis,
@@ -19,9 +20,11 @@ import {
   type Adresboek,
 } from "@/lib/ritten/plaatsen";
 import { supabaseServer } from "@/lib/supabase/server";
-import { afrondKm, metersNaarKm } from "@/lib/uren";
+import { afrondKm, metersNaarKm, secondenNaarReisduurMinuten } from "@/lib/uren";
 import {
+  afwijkendeReistijdMinuten,
   leesDecimaal,
+  leesReisduur,
   netjesPostcode,
   ritSchema,
   thuisadresSchema,
@@ -44,6 +47,14 @@ export interface ActieResultaat {
 
 const NOG_GEEN_TABEL =
   "De ritten staan nog niet in de database: de SQL-stap voor de rittenregistratie is nog niet gedraaid. Zie PUBLICEREN.md.";
+
+const NOG_GEEN_REISTIJD =
+  "De reistijd kan nog niet worden opgeslagen: de SQL-stap voor de reistijd bij de ritten is nog niet gedraaid. Zie PUBLICEREN.md, stap 4f.";
+
+/** PostgREST kent een kolom niet: de SQL voor de reistijd is nog niet gedraaid. */
+function kolommenOntbreken(fout: { code?: string } | null): boolean {
+  return fout?.code === "PGRST204" || fout?.code === "42703";
+}
 
 function veldfouten(fouten: { path: PropertyKey[]; message: string }[]) {
   const velden: Record<string, string> = {};
@@ -116,6 +127,10 @@ export async function bewaarRit(invoer: unknown): Promise<ActieResultaat> {
     heen_en_terug: waarden.heenEnTerug,
     km_enkel: afrondKm(leesDecimaal(waarden.kmEnkel) ?? 0),
     vergoeding_per_km: vergoeding,
+    reisduur_enkel_minuten: leesReisduur(waarden.reisduurEnkelMinuten),
+    afwijkende_reistijd_minuten: waarden.afwijkend
+      ? afwijkendeReistijdMinuten(waarden.afwijkendUren, waarden.afwijkendMinuten)
+      : null,
   };
 
   const supabase = await supabaseServer();
@@ -125,6 +140,7 @@ export async function bewaarRit(invoer: unknown): Promise<ActieResultaat> {
       .from("ritten")
       .update(rij)
       .eq("id", bestaande.id);
+    if (kolommenOntbreken(error)) return fout(NOG_GEEN_REISTIJD);
     if (error) return fout("De rit kon niet worden bijgewerkt.", error);
     revalidatePath("/ritten");
     return { gelukt: true, id: bestaande.id, melding: "Rit bijgewerkt." };
@@ -135,6 +151,7 @@ export async function bewaarRit(invoer: unknown): Promise<ActieResultaat> {
     .insert(rij)
     .select("id")
     .single();
+  if (kolommenOntbreken(error)) return fout(NOG_GEEN_REISTIJD);
   if (error) return fout("De rit kon niet worden opgeslagen.", error);
 
   revalidatePath("/ritten");
@@ -159,61 +176,90 @@ export async function verwijderRit(ritId: string): Promise<ActieResultaat> {
 }
 
 // ---------------------------------------------------------------------------
-// Afstand
+// Afstand en reisduur
 // ---------------------------------------------------------------------------
 
 export interface Afstand {
   /** Kilometers van de enkele reis, of `null` als de medewerker ze zelf invult. */
   kmEnkel: number | null;
-  /** Waar het getal vandaan komt; `null` als er geen getal is. */
+  /**
+   * Reisduur van de enkele reis zonder files, in minuten en afgerond (SPEC.md
+   * 5.2 en 5.6), of `null` als die niet bekend is.
+   */
+  reisduurEnkelMinuten: number | null;
+  /** Waar de kilometers vandaan komen; `null` als er geen getal is. */
   bron: "onthouden" | "berekend" | null;
   /** Uitleg voor onder het veld. */
   melding: string | null;
 }
 
+interface Routegegevens {
+  /** De ritten van de medewerker om wie het gaat, voor eerder gereden routes. */
+  ritten: Rit[];
+  /** Haar profiel: daar staat het thuisadres in. */
+  profiel: Profiel;
+  klanten: Klant[];
+  afrondingMinuten: number;
+}
+
 /**
- * Zoekt de afstand van een route op (SPEC.md 5.7):
+ * Zoekt de afstand en de reisduur van een route op (SPEC.md 5.7):
  *
  * 1. Is deze route eerder gereden, in een van beide richtingen? Dan de
- *    afstand van de meest recente rit. Zo blijft een eigen verbetering
- *    bewaard, en is er geen externe dienst nodig.
- * 2. Anders rekent Google Maps de afstand over de weg uit: van adres tot
- *    adres, of tussen plaatsen als er alleen een plaatsnaam is gekozen. Voor
- *    Thuis het volledige thuisadres, zonder naam (SPEC.md 5.7).
- * 3. Lukt dat niet, dan vult de medewerker de kilometers zelf in.
+ *    afstand en de reisduur van de meest recente rit. Zo blijft een eigen
+ *    verbetering bewaard, en is er geen externe dienst nodig.
+ * 2. Anders rekent Google Maps de route uit: van adres tot adres, of tussen
+ *    plaatsen als er alleen een plaatsnaam is gekozen. Voor Thuis het
+ *    volledige thuisadres, zonder naam (SPEC.md 5.7). Heeft een eerder
+ *    gereden route nog geen reisduur, dan komt alleen die van Google.
+ * 3. Lukt dat niet, dan vult de medewerker de kilometers en de reistijd zelf
+ *    in.
  */
-export async function zoekAfstand(
+async function bepaalRoute(
   van: string,
   naar: string,
+  gegevens: Routegegevens,
 ): Promise<Afstand> {
   const geen = (melding: string | null): Afstand => ({
     kmEnkel: null,
+    reisduurEnkelMinuten: null,
     bron: null,
     melding,
   });
 
   if (!van.trim() || !naar.trim()) return geen(null);
 
-  const [gegevens, ritten] = await Promise.all([werkset(), rittenset()]);
-
-  const eerder = onthoudenAfstand(
-    rittenVan(ritten.ritten, gegevens.ik.id),
-    van,
-    naar,
-  );
-  if (eerder) {
+  const eerder = onthoudenAfstand(gegevens.ritten, van, naar);
+  const eerderMelding = eerder
+    ? `Zelfde afstand als bij je rit van ${formatteerDatum(eerder.datum)}.`
+    : null;
+  if (eerder && eerder.reisduurEnkelMinuten != null) {
     return {
       kmEnkel: eerder.kmEnkel,
+      reisduurEnkelMinuten: eerder.reisduurEnkelMinuten,
       bron: "onthouden",
-      melding: `Zelfde afstand als bij je rit van ${formatteerDatum(eerder.datum)}.`,
+      melding: eerderMelding,
     };
   }
 
+  // Lukt het opzoeken bij Google niet, dan blijven de onthouden kilometers
+  // wel staan; alleen de reisduur is dan onbekend.
+  const zonderGoogle = (melding: string): Afstand =>
+    eerder
+      ? {
+          kmEnkel: eerder.kmEnkel,
+          reisduurEnkelMinuten: null,
+          bron: "onthouden",
+          melding: eerderMelding,
+        }
+      : geen(melding);
+
+  const { profiel } = gegevens;
   const boek: Adresboek = {
     thuis: {
-      adres: gegevens.ik.standplaatsAdres,
-      postcode: gegevens.ik.standplaatsPostcode,
-      plaats: gegevens.ik.standplaatsPlaats,
+      adres: profiel.standplaatsAdres,
+      postcode: profiel.standplaatsPostcode,
+      plaats: profiel.standplaatsPlaats,
     },
     // Ook scholen die op non-actief staan: een oude rit kan er nog heen gaan.
     scholen: gegevens.klanten.map((klant) => ({
@@ -224,57 +270,164 @@ export async function zoekAfstand(
     })),
   };
 
-  if ((isThuis(van) || isThuis(naar)) && !gegevens.ik.standplaatsPlaats?.trim()) {
-    return geen(
-      "Stel bovenaan eerst je thuisadres in; dan rekent de app de afstand vanaf Thuis uit. Of vul de kilometers zelf in.",
+  if ((isThuis(van) || isThuis(naar)) && !profiel.standplaatsPlaats?.trim()) {
+    return zonderGoogle(
+      "Stel bovenaan eerst je thuisadres in; dan rekent de app de afstand en de reistijd vanaf Thuis uit. Of vul ze zelf in.",
     );
   }
 
   if (zelfdeRoutepunt(van, naar, boek)) {
-    return geen(
-      "Van en naar liggen in dezelfde plaats. Vul de kilometers zelf in.",
+    return zonderGoogle(
+      "Van en naar liggen in dezelfde plaats. Vul de kilometers en de reistijd zelf in.",
     );
   }
 
   const sleutel = googleSleutel();
   if (!sleutel) {
-    return geen(
-      "Automatisch berekenen staat nog niet aan. Vul de kilometers zelf in.",
+    return zonderGoogle(
+      "Automatisch berekenen staat nog niet aan. Vul de kilometers en de reistijd zelf in.",
     );
   }
 
   const vanAdres = routeAdres(van, boek);
   const naarAdres = routeAdres(naar, boek);
-  if (!vanAdres || !naarAdres) return geen(null);
+  if (!vanAdres || !naarAdres) return zonderGoogle("");
 
   try {
-    const meters = await afstandInMeters(vanAdres, naarAdres, sleutel);
-    if (meters === null) {
-      return geen(
-        "Google Maps vond geen route tussen deze plaatsen. Controleer de plaatsnamen, of vul de kilometers zelf in.",
+    const route = await routeVan(vanAdres, naarAdres, sleutel);
+    if (route === null) {
+      return zonderGoogle(
+        "Google Maps vond geen route tussen deze plaatsen. Controleer de plaatsnamen, of vul de kilometers en de reistijd zelf in.",
       );
     }
 
-    const km = metersNaarKm(meters);
+    const km = metersNaarKm(route.meters);
     if (km === 0) {
-      return geen(
-        "Van en naar liggen in dezelfde plaats. Vul de kilometers zelf in.",
+      return zonderGoogle(
+        "Van en naar liggen in dezelfde plaats. Vul de kilometers en de reistijd zelf in.",
       );
     }
 
-    return { kmEnkel: km, bron: "berekend", melding: null };
+    const reisduur =
+      route.seconden === null
+        ? null
+        : secondenNaarReisduurMinuten(route.seconden, gegevens.afrondingMinuten);
+
+    return eerder
+      ? {
+          kmEnkel: eerder.kmEnkel,
+          reisduurEnkelMinuten: reisduur,
+          bron: "onthouden",
+          melding: eerderMelding,
+        }
+      : { kmEnkel: km, reisduurEnkelMinuten: reisduur, bron: "berekend", melding: null };
   } catch (oorzaak) {
     // Alleen de statuscode in het logboek; plaatsnamen en adressen niet.
     const status = oorzaak instanceof RouteplannerFout ? oorzaak.status : null;
     console.error(
-      `Afstand berekenen mislukt${status ? ` (HTTP ${status})` : ""}.`,
+      `Route berekenen mislukt${status ? ` (HTTP ${status})` : ""}.`,
     );
-    return geen(
+    return zonderGoogle(
       status === 403 || status === 401
-        ? "Google Maps weigert de sleutel. De beheerder kan dat nakijken op de pagina Diagnose. Vul de kilometers nu zelf in."
-        : "De afstand kon nu niet worden berekend. Vul de kilometers zelf in.",
+        ? "Google Maps weigert de sleutel. De beheerder kan dat nakijken op de pagina Diagnose. Vul de kilometers en de reistijd nu zelf in."
+        : "De route kon nu niet worden berekend. Vul de kilometers en de reistijd zelf in.",
     );
   }
+}
+
+/** Voor het formulier: de route van de ingelogde medewerker. */
+export async function zoekAfstand(van: string, naar: string): Promise<Afstand> {
+  const [gegevens, ritten] = await Promise.all([werkset(), rittenset()]);
+  return bepaalRoute(van, naar, {
+    ritten: rittenVan(ritten.ritten, gegevens.ik.id),
+    profiel: gegevens.ik,
+    klanten: gegevens.klanten,
+    afrondingMinuten: gegevens.instellingen.reistijdAfrondingMinuten,
+  });
+}
+
+/** Zoveel routes per klik, zodat de knop niet te lang blijft draaien. */
+const ROUTES_PER_KEER = 40;
+
+/**
+ * "Reistijden aanvullen" (SPEC.md 6.7): geeft ritten zonder reistijd alsnog
+ * een berekende reisduur, bijvoorbeeld ritten van vóór de reistijd bij de
+ * ritten kwam. Voor de eigen ritten; de beheerder kan het ook voor een
+ * medewerker doen.
+ */
+export async function vulReistijdenAan(
+  medewerkerId?: string,
+): Promise<ActieResultaat & { bijgewerkt?: number; overgebleven?: number }> {
+  const [gegevens, ritten] = await Promise.all([werkset(), rittenset()]);
+  if (!ritten.beschikbaar) return fout(NOG_GEEN_TABEL);
+
+  const voor = medewerkerId ?? gegevens.ik.id;
+  if (voor !== gegevens.ik.id && gegevens.ik.rol !== "beheerder") {
+    return fout("Je kunt alleen je eigen ritten aanvullen.");
+  }
+  const profiel = gegevens.profielen.find((p) => p.id === voor);
+  if (!profiel) return fout("Deze medewerker is niet gevonden.");
+
+  const vanMedewerker = rittenVan(ritten.ritten, voor);
+  const zonder = vanMedewerker.filter(
+    (rit) => rit.reisduurEnkelMinuten === null && rit.afwijkendeReistijdMinuten === null,
+  );
+  if (zonder.length === 0) {
+    return { gelukt: true, bijgewerkt: 0, overgebleven: 0, melding: "Alle ritten hebben een reistijd." };
+  }
+
+  const routegegevens: Routegegevens = {
+    ritten: vanMedewerker,
+    profiel,
+    klanten: gegevens.klanten,
+    afrondingMinuten: gegevens.instellingen.reistijdAfrondingMinuten,
+  };
+
+  // Eén vraag per route, in welke richting ook.
+  const perRoute = new Map<string, Rit[]>();
+  for (const rit of zonder) {
+    const sleutel = [rit.vanPlaats, rit.naarPlaats]
+      .map((plaats) => plaats.trim().toLowerCase().replace(/\s+/g, " "))
+      .sort()
+      .join(" ↔ ");
+    perRoute.set(sleutel, [...(perRoute.get(sleutel) ?? []), rit]);
+  }
+
+  const supabase = await supabaseServer();
+  let bijgewerkt = 0;
+  let routes = 0;
+
+  for (const groep of perRoute.values()) {
+    if (routes >= ROUTES_PER_KEER) break;
+    routes += 1;
+    const route = await bepaalRoute(groep[0].vanPlaats, groep[0].naarPlaats, routegegevens);
+    if (route.reisduurEnkelMinuten === null) continue;
+
+    const { error } = await supabase
+      .from("ritten")
+      .update({ reisduur_enkel_minuten: route.reisduurEnkelMinuten })
+      .in(
+        "id",
+        groep.map((rit) => rit.id),
+      );
+    if (kolommenOntbreken(error)) return fout(NOG_GEEN_REISTIJD);
+    if (error) return fout("De reistijden konden niet worden opgeslagen.", error);
+    bijgewerkt += groep.length;
+  }
+
+  const overgebleven = zonder.length - bijgewerkt;
+  revalidatePath("/ritten");
+  revalidatePath("/mijn-uren");
+  revalidatePath("/beheer");
+  return {
+    gelukt: true,
+    bijgewerkt,
+    overgebleven,
+    melding:
+      overgebleven === 0
+        ? `Klaar: ${bijgewerkt === 1 ? "1 rit heeft" : `${bijgewerkt} ritten hebben`} nu een reistijd.`
+        : `${bijgewerkt === 1 ? "1 rit heeft" : `${bijgewerkt} ritten hebben`} nu een reistijd. Bij ${overgebleven === 1 ? "1 rit" : `${overgebleven} ritten`} lukte het niet${routes >= ROUTES_PER_KEER ? " of nog niet; klik nog een keer" : ""}. Vul die zelf in: klik op de rit en kies Afwijkende reistijd.`,
+  };
 }
 
 // ---------------------------------------------------------------------------

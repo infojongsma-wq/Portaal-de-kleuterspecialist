@@ -15,16 +15,22 @@ import { Datumveld } from "@/components/ui/datumveld";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Rit } from "@/lib/data/types";
-import { formatteerBedrag, formatteerKm } from "@/lib/formatteer";
+import {
+  formatteerBedrag,
+  formatteerKm,
+  formatteerUrenKlok,
+} from "@/lib/formatteer";
 import {
   adresInEenRegel,
   THUIS,
   type Adres,
   type School,
 } from "@/lib/ritten/plaatsen";
-import { bedragVanRit, kmVanRit } from "@/lib/uren";
+import { bedragVanRit, kmVanRit, reistijdVanRitMinuten } from "@/lib/uren";
 import {
+  afwijkendeReistijdMinuten,
   leesDecimaal,
+  leesReisduur,
   ritSchema,
   type RitFormulier as RitWaarden,
 } from "@/lib/validatie/rit";
@@ -48,7 +54,16 @@ function leeg(datum: string, thuisIngesteld: boolean): RitWaarden {
     naarPlaats: "",
     heenEnTerug: false,
     kmEnkel: "",
+    reisduurEnkelMinuten: "",
+    afwijkend: false,
+    afwijkendUren: "",
+    afwijkendMinuten: "",
   };
+}
+
+/** Minuten als `1u30`. */
+function klok(minuten: number): string {
+  return formatteerUrenKlok(minuten / 60);
 }
 
 function naarFormulier(rit: Rit): RitWaarden {
@@ -60,6 +75,17 @@ function naarFormulier(rit: Rit): RitWaarden {
     naarPlaats: rit.naarPlaats,
     heenEnTerug: rit.heenEnTerug,
     kmEnkel: String(rit.kmEnkel),
+    reisduurEnkelMinuten:
+      rit.reisduurEnkelMinuten === null ? "" : String(rit.reisduurEnkelMinuten),
+    afwijkend: rit.afwijkendeReistijdMinuten !== null,
+    afwijkendUren:
+      rit.afwijkendeReistijdMinuten === null
+        ? ""
+        : String(Math.floor(rit.afwijkendeReistijdMinuten / 60)),
+    afwijkendMinuten:
+      rit.afwijkendeReistijdMinuten === null
+        ? ""
+        : String(rit.afwijkendeReistijdMinuten % 60),
   };
 }
 
@@ -67,8 +93,9 @@ function naarFormulier(rit: Rit): RitWaarden {
  * Een rit invoeren of wijzigen (SPEC.md 6.7).
  *
  * Zo eenvoudig mogelijk: datum, doel, van, naar, en of het heen en terug was.
- * De kilometers verschijnen vanzelf zodra Van en Naar gekozen zijn, en het
- * bedrag staat er meteen onder.
+ * De kilometers en de reistijd verschijnen vanzelf zodra Van en Naar gekozen
+ * zijn, en het bedrag staat er meteen onder. Bij files of een omleiding vult
+ * de medewerker met "Afwijkende reistijd" de werkelijke reistijd in.
  */
 export function RitFormulier({
   rit,
@@ -111,18 +138,42 @@ export function RitFormulier({
   });
 
   // Klikt de medewerker in de lijst op een andere rit, dan volgt het formulier.
+  // Heeft die rit nog geen reistijd, bijvoorbeeld omdat hij van vóór de
+  // reistijd bij de ritten is, dan zoekt het formulier die meteen op.
   React.useEffect(() => {
     reset(rit ? naarFormulier(rit) : leeg(vandaag, thuisIngesteld));
     setAfstand(rit ? { soort: "opgeslagen" } : { soort: "leeg" });
     setMelding(null);
-    verzoek.current += 1;
-  }, [rit, vandaag, thuisIngesteld, reset]);
+    const nummer = ++verzoek.current;
+    if (
+      rit &&
+      rit.reisduurEnkelMinuten === null &&
+      rit.afwijkendeReistijdMinuten === null
+    ) {
+      void zoekAfstand(rit.vanPlaats, rit.naarPlaats)
+        .then((uitkomst) => {
+          if (nummer !== verzoek.current) return;
+          if (uitkomst.reisduurEnkelMinuten !== null) {
+            setValue("reisduurEnkelMinuten", String(uitkomst.reisduurEnkelMinuten));
+          } else {
+            setValue("afwijkend", true);
+          }
+        })
+        .catch(() => {
+          if (nummer === verzoek.current) setValue("afwijkend", true);
+        });
+    }
+  }, [rit, vandaag, thuisIngesteld, reset, setValue]);
 
   const datum = watch("datum");
   const vanPlaats = watch("vanPlaats");
   const naarPlaats = watch("naarPlaats");
   const heenEnTerug = watch("heenEnTerug");
   const kmTekst = watch("kmEnkel");
+  const reisduurTekst = watch("reisduurEnkelMinuten");
+  const afwijkend = watch("afwijkend");
+  const afwijkendUren = watch("afwijkendUren");
+  const afwijkendMinuten = watch("afwijkendMinuten");
 
   /**
    * Zoekt de afstand op zodra Van en Naar allebei gekozen zijn. Een antwoord
@@ -137,6 +188,7 @@ export function RitFormulier({
 
     setAfstand({ soort: "bezig" });
     setValue("kmEnkel", "");
+    setValue("reisduurEnkelMinuten", "");
 
     let uitkomst: Afstand;
     try {
@@ -146,11 +198,19 @@ export function RitFormulier({
       setAfstand({
         soort: "zelf",
         melding:
-          "De afstand kon niet worden opgehaald. Vul de kilometers zelf in.",
+          "De afstand kon niet worden opgehaald. Vul de kilometers en de reistijd zelf in.",
       });
+      setValue("afwijkend", true);
       return;
     }
     if (nummer !== verzoek.current) return;
+
+    // Zonder berekende reisduur vult de medewerker de reistijd zelf in.
+    if (uitkomst.reisduurEnkelMinuten !== null) {
+      setValue("reisduurEnkelMinuten", String(uitkomst.reisduurEnkelMinuten));
+    } else {
+      setValue("afwijkend", true);
+    }
 
     if (uitkomst.kmEnkel !== null) {
       setValue("kmEnkel", String(uitkomst.kmEnkel), { shouldValidate: true });
@@ -204,6 +264,17 @@ export function RitFormulier({
   const vergoeding = rit?.vergoedingPerKm ?? vergoedingPerKm;
   const km = leesDecimaal(kmTekst);
   const geldigeKm = km !== null && Number.isFinite(km) && km > 0 ? km : null;
+
+  // De reistijd van deze rit, zoals hij gaat meetellen (SPEC.md 5.2).
+  const reisduur = leesReisduur(reisduurTekst);
+  const reistijd = reistijdVanRitMinuten({
+    datum,
+    heenEnTerug,
+    reisduurEnkelMinuten: reisduur,
+    afwijkendeReistijdMinuten: afwijkend
+      ? afwijkendeReistijdMinuten(afwijkendUren, afwijkendMinuten)
+      : null,
+  });
 
   return (
     <form onSubmit={handleSubmit(opslaan)} className="flex flex-col gap-5">
@@ -323,6 +394,24 @@ export function RitFormulier({
         </div>
       </Veld>
 
+      <Reistijdveld
+        bezig={afstand.soort === "bezig"}
+        gekozen={Boolean(vanPlaats && naarPlaats)}
+        heenEnTerug={heenEnTerug}
+        reisduur={reisduur}
+        afwijkend={afwijkend}
+        fout={errors.afwijkendUren?.message ?? errors.reisduurEnkelMinuten?.message}
+        urenVeld={register("afwijkendUren")}
+        minutenVeld={register("afwijkendMinuten")}
+        onAfwijkend={(aan) => {
+          setValue("afwijkend", aan, { shouldValidate: !aan });
+          if (!aan) {
+            setValue("afwijkendUren", "");
+            setValue("afwijkendMinuten", "");
+          }
+        }}
+      />
+
       {/* Meteen zien wat de rit oplevert. */}
       <div className="rounded-md bg-secondary px-4 py-3" aria-live="polite">
         {vergoeding == null ? (
@@ -342,12 +431,19 @@ export function RitFormulier({
                   vergoedingPerKm: vergoeding,
                 }),
               )}
+              {reistijd !== null ? ` · reistijd ${klok(reistijd)}` : null}
             </p>
             <p className="text-xs text-muted-foreground">
               {formatteerKm(geldigeKm)} km
               {heenEnTerug ? " × 2 (heen en terug)" : ""} ×{" "}
               {formatteerBedrag(vergoeding)} per km
             </p>
+            {reistijd !== null ? (
+              <p className="text-xs text-muted-foreground">
+                De reistijd telt mee als werktijd, na aftrek van een uur eigen
+                tijd per enkele reis, met hooguit 2 uur per dag.
+              </p>
+            ) : null}
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -428,4 +524,116 @@ function Afstanduitleg({ status }: { status: Afstandstatus }) {
 
   if (!tekst) return null;
   return <p className="text-xs text-muted-foreground">{tekst}</p>;
+}
+
+/**
+ * De reistijd van de rit (SPEC.md 6.7): berekend, of met "Afwijkende
+ * reistijd" zelf ingevuld, in uren en minuten.
+ */
+function Reistijdveld({
+  bezig,
+  gekozen,
+  heenEnTerug,
+  reisduur,
+  afwijkend,
+  fout,
+  urenVeld,
+  minutenVeld,
+  onAfwijkend,
+}: {
+  bezig: boolean;
+  /** Zijn Van en Naar allebei gekozen? */
+  gekozen: boolean;
+  heenEnTerug: boolean;
+  /** Berekende reisduur van de enkele reis in minuten, of `null`. */
+  reisduur: number | null;
+  afwijkend: boolean;
+  fout?: string;
+  urenVeld: React.ComponentProps<"input">;
+  minutenVeld: React.ComponentProps<"input">;
+  onAfwijkend: (aan: boolean) => void;
+}) {
+  const berekend = reisduur !== null ? reisduur * (heenEnTerug ? 2 : 1) : null;
+
+  return (
+    <div className="grid gap-1.5">
+      <p className="text-sm font-medium">Reistijd</p>
+
+      {!afwijkend ? (
+        bezig ? (
+          <p className="text-sm text-muted-foreground">De reistijd wordt berekend…</p>
+        ) : berekend !== null ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <p className="text-sm">
+              <span className="font-semibold tabular-nums">{klok(berekend)}</span>
+              <span className="text-muted-foreground">
+                {heenEnTerug
+                  ? ` (2 × ${reisduur! < 60 ? `${reisduur} min` : klok(reisduur!)}, heen en terug, zonder files)`
+                  : " (enkele reis, zonder files)"}
+              </span>
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onAfwijkend(true)}
+            >
+              Afwijkende reistijd
+            </Button>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {gekozen ? "Nog niet bekend." : "Verschijnt zodra Van en Naar zijn gekozen."}
+          </p>
+        )
+      ) : (
+        <fieldset className="grid gap-2 rounded-md border p-3">
+          <legend className="px-1 text-xs text-muted-foreground">
+            Werkelijke reistijd van de hele rit
+            {heenEnTerug ? ", heen en terug samen" : ""}
+          </legend>
+          <div className="flex items-center gap-2">
+            <Input
+              aria-label="Uren"
+              inputMode="numeric"
+              placeholder="0"
+              className="h-10 w-16 text-right"
+              {...urenVeld}
+            />
+            <span className="text-sm">uur</span>
+            <Input
+              aria-label="Minuten"
+              inputMode="numeric"
+              placeholder="0"
+              className="h-10 w-16 text-right"
+              {...minutenVeld}
+            />
+            <span className="text-sm">min</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {berekend !== null
+              ? "Bijvoorbeeld bij files of een omleiding. Je hoeft dit niet te verantwoorden."
+              : "De reistijd kon niet worden berekend. Vul hier in hoe lang je hebt gereden."}
+          </p>
+          {berekend !== null ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="justify-self-start"
+              onClick={() => onAfwijkend(false)}
+            >
+              Berekende reistijd gebruiken ({klok(berekend)})
+            </Button>
+          ) : null}
+        </fieldset>
+      )}
+
+      {fout ? (
+        <p className="text-xs text-destructive" role="alert">
+          {fout}
+        </p>
+      ) : null}
+    </div>
+  );
 }

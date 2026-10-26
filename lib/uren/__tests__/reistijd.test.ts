@@ -3,6 +3,8 @@ import {
   afrondAutomatischeReistijdMinuten,
   reistijdVanDag,
   reistijdVanRitMinuten,
+  reistijdVanRitten,
+  secondenNaarReisduurMinuten,
 } from "../reistijd";
 import { maakRit } from "./hulp";
 
@@ -163,7 +165,37 @@ describe("reistijd per dag (SPEC.md 5.2)", () => {
   });
 });
 
+describe("reistijd van een maand (SPEC.md 5.2 en 6.7)", () => {
+  it("trekt de eigen tijd per dag af en telt de dagen op", () => {
+    const maand = reistijdVanRitten(
+      [
+        // 10 maart: 2 × 90 = 3,00 − 2,00 = 1,00
+        maakRit({ datum: "2027-03-10", reisduurEnkelMinuten: 90 }),
+        // 11 maart: 45 + 45 enkele reizen = 1,50 − 1,50 = 0,00
+        maakRit({ datum: "2027-03-11", reisduurEnkelMinuten: 45, heenEnTerug: false }),
+        maakRit({ datum: "2027-03-11", reisduurEnkelMinuten: 45, heenEnTerug: false }),
+        // 12 maart: onbekend
+        maakRit({ datum: "2027-03-12", reisduurEnkelMinuten: null }),
+      ],
+      EIGEN_REISTIJD,
+    );
+    expect(maand).toEqual({
+      brutoUren: 4.5,
+      eigenTijdUren: 3.5,
+      werktijdUren: 1.0,
+      aantalRitten: 3,
+      aantalZonderReistijd: 1,
+    });
+  });
+});
+
 describe("afronding van de berekende reisduur (SPEC.md 5.6)", () => {
+  it("zet seconden van de routeplanner om naar afgeronde minuten", () => {
+    expect(secondenNaarReisduurMinuten(2780, 5)).toBe(45); // 46,3 minuten
+    expect(secondenNaarReisduurMinuten(2880, 5)).toBe(50); // 48 minuten
+    expect(secondenNaarReisduurMinuten(0, 5)).toBe(0);
+  });
+
   it("rondt af op hele stappen van 5 minuten", () => {
     expect(afrondAutomatischeReistijdMinuten(61, 5)).toBe(60);
     expect(afrondAutomatischeReistijdMinuten(63, 5)).toBe(65);

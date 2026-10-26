@@ -1,4 +1,4 @@
-import { leesGoogleAfstand } from "./plaatsen";
+import { leesGoogleRoute, type GoogleRoute } from "./plaatsen";
 
 /**
  * Afstand over de weg via de Google Routes API (SPEC.md 5.7).
@@ -32,23 +32,25 @@ export class RouteplannerFout extends Error {
 }
 
 /**
- * De afstand in meters van de snelste route met de auto, of `null` als Google
- * geen route vond. Gooit een `RouteplannerFout` als Google de vraag weigert,
- * bijvoorbeeld omdat de sleutel niet klopt of de Routes API niet aanstaat.
+ * De afstand in meters en de reisduur zonder files van de snelste route met
+ * de auto, of `null` als Google geen route vond. Gooit een `RouteplannerFout`
+ * als Google de vraag weigert, bijvoorbeeld omdat de sleutel niet klopt of de
+ * Routes API niet aanstaat.
  */
-export async function afstandInMeters(
+export async function routeVan(
   van: string,
   naar: string,
   sleutel: string,
-): Promise<number | null> {
+): Promise<GoogleRoute | null> {
   const antwoord = await fetch(ROUTES_API, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": sleutel,
-      // Alleen de afstand opvragen. Zonder verkeersinformatie valt de vraag in
-      // het eenvoudigste tarief, met de meeste gratis vragen per maand.
-      "X-Goog-FieldMask": "routes.distanceMeters",
+      // Alleen de afstand en de reisduur opvragen. Zonder verkeersinformatie
+      // is de reisduur die zonder files (SPEC.md 5.2), en valt de vraag in het
+      // eenvoudigste tarief, met de meeste gratis vragen per maand.
+      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
     },
     body: JSON.stringify({
       origin: { address: van },
@@ -76,5 +78,5 @@ export async function afstandInMeters(
     throw new RouteplannerFout(antwoord.status, toelichting);
   }
 
-  return leesGoogleAfstand(await antwoord.json());
+  return leesGoogleRoute(await antwoord.json());
 }

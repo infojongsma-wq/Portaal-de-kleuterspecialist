@@ -3,7 +3,15 @@ import ExcelJS from "exceljs";
 import type { Rit } from "@/lib/data/types";
 import { formatteerBedrag, formatteerDatum } from "@/lib/formatteer";
 import { maandNaam } from "@/lib/ritten/maand";
-import { bedragVanRit, kmVanRit, rittenTotaal } from "@/lib/uren";
+import { naarRitReistijdInvoer } from "@/lib/ritten/reistijd";
+import {
+  afrondUren,
+  bedragVanRit,
+  kmVanRit,
+  reistijdVanRitMinuten,
+  reistijdVanRitten,
+  rittenTotaal,
+} from "@/lib/uren";
 
 /**
  * Het Excel-bestand met de ritten van één maand (SPEC.md 6.7).
@@ -27,6 +35,8 @@ export const KOLOMKOPPEN = [
   "Km totaal",
   "Vergoeding per km",
   "Bedrag",
+  "Reistijd (uren)",
+  "Reistijd aangepast",
 ] as const;
 
 export interface RittenExport {
@@ -39,6 +49,8 @@ export interface RittenExport {
   ritten: Rit[];
   /** De vergoeding die nu geldt; voor de kop als er nog geen ritten zijn. */
   huidigeVergoeding: number | null;
+  /** Uit `instellingen`; voor de reistijd die als werktijd telt (SPEC.md 5.2). */
+  eigenReistijdUrenPerDag: number;
   /** `jjjj-mm-dd` */
   vandaag: string;
 }
@@ -81,6 +93,10 @@ function vergoedingTekst(invoer: RittenExport): string {
 export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
   const naamVanMaand = maandNaam(invoer.maand);
   const totaal = rittenTotaal(invoer.ritten);
+  const reistijd = reistijdVanRitten(
+    invoer.ritten.map(naarRitReistijdInvoer),
+    invoer.eigenReistijdUrenPerDag,
+  );
 
   const werkboek = new ExcelJS.Workbook();
   werkboek.creator = "Portaal De Kleuterspecialist";
@@ -121,6 +137,8 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
     { key: "kmTotaal", width: 12 },
     { key: "vergoeding", width: 18 },
     { key: "bedrag", width: 13 },
+    { key: "reistijd", width: 14 },
+    { key: "aangepast", width: 13 },
   ];
 
   // Kop: waar gaat dit over.
@@ -154,6 +172,7 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
   kop.height = 22;
 
   for (const rit of invoer.ritten) {
+    const minuten = reistijdVanRitMinuten(naarRitReistijdInvoer(rit));
     blad.addRow({
       datum: excelDatum(rit.datum),
       doel: rit.doel,
@@ -164,6 +183,13 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
       kmTotaal: kmVanRit(rit),
       vergoeding: rit.vergoedingPerKm,
       bedrag: bedragVanRit(rit),
+      reistijd: minuten === null ? null : afrondUren(minuten / 60),
+      aangepast:
+        minuten === null
+          ? "nog onbekend"
+          : rit.afwijkendeReistijdMinuten !== null
+            ? "ja"
+            : "nee",
     });
   }
 
@@ -184,10 +210,30 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
         formula: `SUM(I${eersteRit}:I${laatsteRit})`,
         result: totaal.bedrag,
       },
+      reistijd: {
+        formula: `SUM(J${eersteRit}:J${laatsteRit})`,
+        result: reistijd.brutoUren,
+      },
     });
     totaalregel.font = { bold: true };
     totaalregel.border = { top: { style: "thin" } };
-    blad.autoFilter = { from: `A${KOPREGEL}`, to: `I${laatsteRit}` };
+    blad.autoFilter = { from: `A${KOPREGEL}`, to: `K${laatsteRit}` };
+
+    // De reistijd die als werktijd telt: de eigen tijd gaat er per dag af,
+    // dus dat staat los onder de tabel (SPEC.md 5.2).
+    blad.addRow({});
+    const reistijdregels: [string, number][] = [
+      ["Reistijd in totaal", reistijd.brutoUren],
+      [
+        "Min eigen tijd (een uur per enkele reis, hooguit 2 uur per dag)",
+        reistijd.eigenTijdUren,
+      ],
+      ["Reistijd die als werktijd telt", reistijd.werktijdUren],
+    ];
+    reistijdregels.forEach(([label, uren], positie) => {
+      const regel = blad.addRow({ doel: label, reistijd: uren });
+      if (positie === reistijdregels.length - 1) regel.font = { bold: true };
+    });
   } else {
     blad.addRow({ doel: `Geen ritten in ${naamVanMaand}.` });
   }
@@ -199,6 +245,7 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
     kmTotaal: "0.0",
     vergoeding: '"€" #,##0.00#',
     bedrag: '"€" #,##0.00',
+    reistijd: "0.00",
   };
   for (const [kolom, numFmt] of Object.entries(opmaak)) {
     blad.getColumn(kolom).eachCell({ includeEmpty: false }, (cel, rijnummer) => {
@@ -214,12 +261,21 @@ export function rittenWerkboek(invoer: RittenExport): ExcelJS.Workbook {
       }
     });
   }
-  for (const kolom of ["heenEnTerug", "kmEnkel", "kmTotaal", "vergoeding", "bedrag"]) {
+  for (const kolom of [
+    "heenEnTerug",
+    "kmEnkel",
+    "kmTotaal",
+    "vergoeding",
+    "bedrag",
+    "reistijd",
+    "aangepast",
+  ]) {
     blad.getColumn(kolom).eachCell({ includeEmpty: false }, (cel, rijnummer) => {
       if (rijnummer >= KOPREGEL) {
         cel.alignment = {
           ...cel.alignment,
-          horizontal: kolom === "heenEnTerug" ? "center" : "right",
+          horizontal:
+            kolom === "heenEnTerug" || kolom === "aangepast" ? "center" : "right",
         };
       }
     });

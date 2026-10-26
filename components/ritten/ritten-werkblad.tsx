@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye } from "lucide-react";
 
 import { MaandOverzicht } from "@/components/ritten/maand-overzicht";
+import { ReistijdenAanvullen } from "@/components/ritten/reistijden-aanvullen";
 import { RitFormulier } from "@/components/ritten/rit-formulier";
 import {
   ThuisadresKaart,
@@ -36,6 +37,8 @@ export function RittenWerkblad({
   dezeMaand,
   medewerkerParameter,
   vergoedingPerKm,
+  eigenReistijdUrenPerDag,
+  zonderReistijd,
   vandaag,
 }: {
   naam: string;
@@ -52,6 +55,10 @@ export function RittenWerkblad({
   /** Alleen bij de beheerder die iemand anders bekijkt. */
   medewerkerParameter: string | null;
   vergoedingPerKm: number | null;
+  /** Uit `instellingen`; voor de reistijd die als werktijd telt. */
+  eigenReistijdUrenPerDag: number;
+  /** Ritten van deze medewerker zonder reistijd, over alle maanden. */
+  zonderReistijd: number;
   vandaag: string;
 }) {
   const [teWijzigen, setTeWijzigen] = React.useState<Rit | null>(null);
@@ -106,22 +113,26 @@ export function RittenWerkblad({
         )}
       </div>
 
-      <MaandOverzicht
-        ritten={maandRitten}
-        maand={maand}
-        vorigeMaand={vorigeMaand}
-        volgendeMaand={volgendeMaand}
-        dezeMaand={dezeMaand}
-        paginaAdres={(gekozenMaand) => `/ritten?${zoekreeks(gekozenMaand)}`}
-        excelAdres={`/ritten/excel?${zoekreeks(maand)}`}
-        naam={naam}
-        thuisadres={thuisOmschrijving}
-        vergoedingPerKm={vergoedingPerKm}
-        vandaag={vandaag}
-        magWijzigen={magWijzigen}
-        geselecteerdeRitId={gekozenRit?.id ?? null}
-        onWijzig={setTeWijzigen}
-      />
+      <div className="grid min-w-0 content-start gap-5">
+        <ReistijdenAanvullen aantal={zonderReistijd} medewerkerId={medewerkerParameter} />
+        <MaandOverzicht
+          ritten={maandRitten}
+          maand={maand}
+          vorigeMaand={vorigeMaand}
+          volgendeMaand={volgendeMaand}
+          dezeMaand={dezeMaand}
+          paginaAdres={(gekozenMaand) => `/ritten?${zoekreeks(gekozenMaand)}`}
+          excelAdres={`/ritten/excel?${zoekreeks(maand)}`}
+          naam={naam}
+          thuisadres={thuisOmschrijving}
+          vergoedingPerKm={vergoedingPerKm}
+          eigenReistijdUrenPerDag={eigenReistijdUrenPerDag}
+          vandaag={vandaag}
+          magWijzigen={magWijzigen}
+          geselecteerdeRitId={gekozenRit?.id ?? null}
+          onWijzig={setTeWijzigen}
+        />
+      </div>
     </div>
   );
 }

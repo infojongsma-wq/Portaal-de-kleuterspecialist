@@ -1,7 +1,7 @@
 import { cache } from "react";
 
 import { supabaseServer } from "@/lib/supabase/server";
-import type { RitReistijdInvoer } from "@/lib/uren";
+export { naarRitReistijdInvoer } from "@/lib/ritten/reistijd";
 import type { Rit } from "./types";
 import { getal, getalOfNull } from "./werkset";
 
@@ -62,16 +62,6 @@ export const rittenset = cache(async (): Promise<Rittenset> => {
 
   return { beschikbaar: true, ritten: (data ?? []).map(naarRit) };
 });
-
-/** De velden die de reistijdberekening nodig heeft (SPEC.md 5.2). */
-export function naarRitReistijdInvoer(rit: Rit): RitReistijdInvoer {
-  return {
-    datum: rit.datum,
-    heenEnTerug: rit.heenEnTerug,
-    reisduurEnkelMinuten: rit.reisduurEnkelMinuten,
-    afwijkendeReistijdMinuten: rit.afwijkendeReistijdMinuten,
-  };
-}
 
 /** De ritten van één medewerker, op datum en daarna op volgorde van invoer. */
 export function rittenVan(ritten: Rit[], medewerkerId: string): Rit[] {
