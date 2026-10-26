@@ -331,6 +331,18 @@ export async function haalAfsprakenMetContext(
   return metContext(gegevens, afsprakenVan(gegevens, medewerkerId));
 }
 
+/**
+ * Alle afspraken die de ingelogde gebruiker mag zien, met context. Voor de
+ * beheerder zijn dat die van iedereen (SPEC.md 6.6, agenda medewerkers); voor
+ * een medewerker laat Row Level Security alleen de eigen afspraken door.
+ */
+export async function haalAlleAfsprakenMetContext(): Promise<
+  AfspraakMetContext[]
+> {
+  const gegevens = await werkset();
+  return metContext(gegevens, [...gegevens.afspraken].sort(opDatum));
+}
+
 export async function haalAfsprakenVoorKlant(
   klantId: string,
 ): Promise<AfspraakMetContext[]> {

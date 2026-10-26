@@ -1,4 +1,5 @@
-import { Lock } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
 import { KilometervergoedingInstelling } from "@/components/beheer/kilometervergoeding-instelling";
@@ -7,6 +8,7 @@ import { RittenOverzicht } from "@/components/beheer/ritten-overzicht";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { TrainingenGedaan } from "@/components/beheer/trainingen-gedaan";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import {
@@ -140,6 +142,14 @@ export default async function BeheerPagina({
     <Pagina
       titel="Beheer"
       omschrijving="Medewerkers, urenverantwoording en stamgegevens."
+      acties={
+        <Button asChild>
+          <Link href="/beheer/agenda">
+            <CalendarDays aria-hidden />
+            Agenda medewerkers
+          </Link>
+        </Button>
+      }
     >
       <div className="grid grid-cols-1 gap-5">
         {/* Trainingen gedaan */}

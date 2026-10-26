@@ -26,6 +26,9 @@ const FullCalendar = dynamic(() => import("@fullcalendar/react"), {
  * Permanente agenda naast het afspraakformulier (SPEC.md 6.2).
  * Kleuren per activiteitsoort, schoolvakanties met een grijze achtergrond,
  * klikken op een afspraak laadt deze in het formulier.
+ *
+ * De agenda van de medewerkers in Beheer (SPEC.md 6.6) gebruikt hem ook, met
+ * een kleur en een titel per medewerker en zonder klikken op een datum.
  */
 export function Agenda({
   afspraken,
@@ -33,12 +36,17 @@ export function Agenda({
   geselecteerdeAfspraakId,
   onKiesAfspraak,
   onKiesDatum,
+  kleurVan = standaardKleur,
+  titelVan = standaardTitel,
 }: {
   afspraken: AfspraakMetContext[];
   nietInzetbareDagen: NietInzetbareDag[];
   geselecteerdeAfspraakId: string | null;
   onKiesAfspraak: (afspraakId: string) => void;
-  onKiesDatum: (datum: string) => void;
+  /** Zonder deze functie gebeurt er niets bij klikken op een lege dag. */
+  onKiesDatum?: (datum: string) => void;
+  kleurVan?: (afspraak: AfspraakMetContext) => string;
+  titelVan?: (afspraak: AfspraakMetContext) => string;
 }) {
   const nietInzetbaar = React.useMemo(
     () => new Map(nietInzetbareDagen.map((dag) => [dag.datum, dag])),
@@ -57,12 +65,12 @@ export function Agenda({
         const vervallen =
           afspraak.status === "geannuleerd" || afspraak.status === "verzet";
 
+        const kleur = kleurVan(afspraak);
+
         return [
           {
             id: afspraak.id,
-            title: afspraak.klant
-              ? `${afspraak.klant.naam} — ${afspraak.titel}`
-              : afspraak.titel,
+            title: titelVan(afspraak),
             start: heeftTijd
               ? `${afspraak.datum}T${afspraak.starttijd}`
               : afspraak.datum,
@@ -71,10 +79,8 @@ export function Agenda({
                 ? `${afspraak.datum}T${afspraak.eindtijd}`
                 : undefined,
             allDay: !heeftTijd,
-            backgroundColor: afspraak.activiteitsoort.kleur,
-            borderColor: geselecteerd
-              ? "#111827"
-              : afspraak.activiteitsoort.kleur,
+            backgroundColor: kleur,
+            borderColor: geselecteerd ? "#111827" : kleur,
             textColor: "#ffffff",
             classNames: [
               vervallen ? "line-through opacity-60" : "",
@@ -83,7 +89,7 @@ export function Agenda({
           },
         ];
       }),
-    [afspraken, geselecteerdeAfspraakId],
+    [afspraken, geselecteerdeAfspraakId, kleurVan, titelVan],
   );
 
   return (
@@ -116,7 +122,11 @@ export function Agenda({
           gebeurtenis.jsEvent.preventDefault();
           onKiesAfspraak(gebeurtenis.event.id);
         }}
-        dateClick={(gebeurtenis) => onKiesDatum(gebeurtenis.dateStr.slice(0, 10))}
+        dateClick={
+          onKiesDatum
+            ? (gebeurtenis) => onKiesDatum(gebeurtenis.dateStr.slice(0, 10))
+            : undefined
+        }
         // Schoolvakanties en feestdagen een grijze achtergrond (SPEC.md 6.2).
         // Via een klasse en niet via achtergrondgebeurtenissen, want die zetten
         // hun omschrijving in elke cel.
@@ -142,4 +152,16 @@ export function Agenda({
       />
     </div>
   );
+}
+
+// Buiten de component, zodat het steeds dezelfde functie is en de lijst met
+// afspraken niet bij elke weergave opnieuw wordt opgebouwd.
+function standaardKleur(afspraak: AfspraakMetContext): string {
+  return afspraak.activiteitsoort.kleur;
+}
+
+function standaardTitel(afspraak: AfspraakMetContext): string {
+  return afspraak.klant
+    ? `${afspraak.klant.naam} — ${afspraak.titel}`
+    : afspraak.titel;
 }

@@ -457,6 +457,7 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Wekker tegen de pauzestand van Supabase | gebouwd — zie stap 4c |
 | Rittenregistratie (tabblad Ritten) | gebouwd — zie stap 4d, eerst de SQL draaien |
 | Trainingen gedaan met vinkje Factuur verstuurd (Beheer) | gebouwd — zie stap 4e, eerst de SQL draaien |
+| Agenda medewerkers (Beheer, knop rechtsboven) | gebouwd |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | alleen de kilometervergoeding; de rest nog te lezen, niet te wijzigen |
