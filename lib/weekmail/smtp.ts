@@ -68,6 +68,9 @@ function maakVerbinding(instellingen: MailInstellingen) {
     secure: instellingen.port === 465,
     requireTLS: instellingen.port !== 465,
     auth: { user: instellingen.gebruiker, pass: instellingen.wachtwoord },
+    // Stel je voor met het eigen domein, niet met de interne naam van de
+    // server bij Vercel. Spamfilters wantrouwen een onbekende naam.
+    name: instellingen.gebruiker.split("@")[1] || undefined,
     connectionTimeout: 15_000,
     greetingTimeout: 15_000,
     socketTimeout: 30_000,
@@ -95,30 +98,58 @@ export async function controleerMailserver(
 }
 
 /**
- * Een foutmelding in gewone taal. Alleen de foutcode van de mailserver gaat
- * mee, nooit de oorspronkelijke tekst: daar kan een mailadres in staan.
+ * Het antwoord van de mailserver, zoals "554 5.7.1 Message rejected", met
+ * elk mailadres vervangen door [adres]. Zo staat de reden in de melding,
+ * zonder persoonsgegevens.
+ */
+export function antwoordVanServer(fout: unknown): string | null {
+  const antwoord =
+    typeof fout === "object" && fout !== null && "response" in fout
+      ? String((fout as { response: unknown }).response ?? "")
+      : "";
+  const schoon = antwoord
+    .replace(/\S+@\S+/g, "[adres]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return schoon || null;
+}
+
+/**
+ * Een foutmelding in gewone taal, met de foutcode en het antwoord van de
+ * mailserver. Nooit de oorspronkelijke tekst van de fout: daar kan een
+ * mailadres in staan.
  */
 export function mailFoutMelding(fout: unknown): string {
   const code =
     typeof fout === "object" && fout !== null && "code" in fout
       ? String((fout as { code: unknown }).code)
       : "";
+  const antwoord = antwoordVanServer(fout);
+  const metAntwoord = (melding: string) =>
+    antwoord ? `${melding} Antwoord van de mailserver: "${antwoord}".` : melding;
 
   switch (code) {
     case "EAUTH":
-      return "De mailserver weigert de inlog. Klopt SMTP_GEBRUIKER (het volledige mailadres) en SMTP_WACHTWOORD?";
+      return metAntwoord(
+        "De mailserver weigert de inlog. Klopt SMTP_GEBRUIKER (het volledige mailadres) en SMTP_WACHTWOORD?",
+      );
     case "EDNS":
     case "ECONNECTION":
     case "ESOCKET":
     case "ETIMEDOUT":
       return `De mailserver is niet bereikbaar (${code}). Klopt SMTP_HOST, en SMTP_PORT (meestal 465)?`;
     case "EENVELOPE":
-      return "De mailserver weigert de afzender of de ontvanger. Klopt WEEKMAIL_AAN, en is SMTP_GEBRUIKER een mailadres van deze mailbox?";
+      return metAntwoord(
+        "De mailserver weigert de afzender of de ontvanger. Klopt WEEKMAIL_AAN, en is SMTP_GEBRUIKER een mailadres van deze mailbox?",
+      );
     case "EMESSAGE":
-      return "De mailserver weigert de mail zelf. Probeer het later nog eens.";
+      return metAntwoord("De mailserver weigert de mail zelf.");
     default:
-      return code
-        ? `De mail kon niet worden verstuurd (${code}).`
-        : "De mail kon niet worden verstuurd.";
+      return metAntwoord(
+        code
+          ? `De mail kon niet worden verstuurd (${code}).`
+          : "De mail kon niet worden verstuurd.",
+      );
   }
 }
