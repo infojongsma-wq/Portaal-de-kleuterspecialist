@@ -1,0 +1,208 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/*
+ * Huisstijl De Kleuterspecialist.
+ *
+ * De vijf merkkleuren staan hieronder als `--merk-*`. Ze worden met mate
+ * gebruikt: turquoise voert de boventoon in knoppen en de balk bovenin,
+ * felgroen markeert dat iets goed staat, de overige tinten zijn voor de
+ * agenda en de grafieken. Vlakken en tekst blijven neutraal, zodat de uren
+ * leesbaar blijven.
+ */
+:root {
+  --merk-turquoise: #026666;
+  --merk-lichtgroen: #94ab68;
+  --merk-felgroen: #95c11f;
+  --merk-donkergroen: #3a673a;
+  --merk-hardgroen: #008d36;
+
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.02 180);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 180);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 180);
+
+  --primary: var(--merk-turquoise);
+  --primary-foreground: oklch(0.99 0.01 150);
+
+  --secondary: oklch(0.96 0.015 175);
+  --secondary-foreground: var(--merk-turquoise);
+  --muted: oklch(0.97 0.008 175);
+  --muted-foreground: oklch(0.5 0.02 190);
+  --accent: oklch(0.95 0.03 150);
+  --accent-foreground: var(--merk-donkergroen);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+
+  --border: oklch(0.92 0.012 180);
+  --input: oklch(0.9 0.015 180);
+  --ring: var(--merk-turquoise);
+}
+
+@theme inline {
+  --color-merk-turquoise: var(--merk-turquoise);
+  --color-merk-lichtgroen: var(--merk-lichtgroen);
+  --color-merk-felgroen: var(--merk-felgroen);
+  --color-merk-donkergroen: var(--merk-donkergroen);
+  --color-merk-hardgroen: var(--merk-hardgroen);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/*
+ * FullCalendar-opmaak. De agenda staat permanent naast het afspraakformulier
+ * (SPEC.md 6.2), dus de kalender vult de beschikbare hoogte.
+ */
+.fc {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: var(--card);
+  --fc-neutral-bg-color: var(--muted);
+  /* Vandaag krijgt een lichte tint van het merkgroen. */
+  --fc-today-bg-color: color-mix(in srgb, var(--merk-felgroen) 12%, white);
+  font-size: 0.875rem;
+}
+
+.fc .fc-toolbar-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.fc .fc-button {
+  background-color: var(--secondary);
+  border-color: var(--border);
+  color: var(--secondary-foreground);
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.625rem;
+  text-transform: capitalize;
+}
+
+.fc .fc-button:hover:not(:disabled) {
+  background-color: var(--accent);
+  border-color: var(--border);
+  color: var(--accent-foreground);
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.fc .fc-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  font-weight: 700;
+}
+
+.fc .fc-event {
+  cursor: pointer;
+  border: none;
+  padding: 1px 3px;
+}
+
+/* Schoolvakanties en feestdagen krijgen een grijze achtergrond (SPEC.md 6.2). */
+.fc .fc-day.dag-niet-inzetbaar {
+  background-color: var(--muted);
+}
+
+/*
+ * Afdrukopmaak — wordt gebruikt voor de PDF-knop.
+ *
+ * De browser maakt de PDF; hier staat wat er dan weg moet en hoe de tabel
+ * over meerdere bladzijden loopt. Geen PDF-bibliotheek nodig.
+ */
+@media print {
+  /* Knoppenbalk, filters en knoppen horen niet op papier. */
+  header,
+  form,
+  .afdruk-verbergen {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  main {
+    max-width: none;
+    padding: 0;
+  }
+
+  /* Kaders en schaduwen kosten alleen maar inkt. */
+  [data-slot="card"] {
+    border: none;
+    box-shadow: none;
+  }
+
+  table {
+    width: 100%;
+    font-size: 10pt;
+  }
+
+  /* Een rij mag niet halverwege over de bladzijde worden afgebroken, en de
+     kolomkoppen komen op elke bladzijde terug. */
+  tr {
+    break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  /* De merkband bovenin is onderdeel van de header en valt dus al weg. */
+  a[href]::after {
+    content: "";
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 14mm;
+  }
+}
