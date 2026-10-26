@@ -1,14 +1,6 @@
 import { afrondUren } from "./afronding";
-import {
-  teltLocatieUren,
-  teltReistijd,
-  teltVoorbereidingUren,
-} from "./afspraak";
-import {
-  brutoReistijdUren,
-  declarabeleReistijdUren,
-  langsteEnkeleReisMinuten,
-} from "./reistijd";
+import { teltLocatieUren, teltVoorbereidingUren } from "./afspraak";
+import { reistijdVanDag, type RitReistijdInvoer } from "./reistijd";
 import type { AfspraakInvoer, Telwijze, UrenregelInvoer } from "./types";
 
 export interface DagInvoer {
@@ -21,6 +13,11 @@ export interface DagInvoer {
   afspraken: AfspraakInvoer[];
   /** Alleen handmatig geboekte urenregels; automatische regels volgen uit de afspraken. */
   handmatigeUrenregels: UrenregelInvoer[];
+  /**
+   * De gereden ritten; daar komt de reistijd uit (SPEC.md 5.2). Ritten zijn
+   * gereden, dus ze tellen in beide telwijzen mee.
+   */
+  ritten: RitReistijdInvoer[];
   /** Uit `instellingen.eigen_reistijd_uren_per_dag`. */
   eigenReistijdUrenPerDag: number;
   /** Uit `instellingen.max_uren_per_dag_waarschuwing`. */
@@ -32,19 +29,18 @@ export interface DagUitkomst {
   datum: string;
   urenOpLocatie: number;
   urenVoorbereiding: number;
-  /** Reistijd heen en terug, vóór aftrek van de eigen tijd. */
+  /** Reistijd van alle ritten van deze dag, vóór aftrek van de eigen tijd. */
   brutoReistijdUren: number;
-  /** De eigen tijd die is afgetrokken; `0` op dagen zonder klantbezoek. */
+  /** De eigen tijd die is afgetrokken; `0` op dagen zonder ritten. */
   eigenReistijdUren: number;
-  /** Declarabele reistijd na aftrek. */
+  /** Reistijd die als werktijd telt, na aftrek. */
   reistijdUren: number;
   urenHandmatig: number;
   totaalUren: number;
-  langsteEnkeleReisMinuten: number;
-  /** Aantal afspraken op deze dag waarvan de reistijd meetelt. */
-  aantalReizen: number;
-  /** Meer dan één bestemming; de UI toont dan een melding (SPEC.md 5.2). */
-  meerdereBestemmingen: boolean;
+  /** Ritten op deze dag waarvan de reistijd meetelt. */
+  aantalRitten: number;
+  /** Ritten op deze dag zonder bekende reistijd; die tellen niet mee. */
+  rittenZonderReistijd: number;
   /** Boven de Arbeidstijdenwet-grens uit `instellingen` (SPEC.md 5.3). */
   overschrijdtMaximum: boolean;
 }
@@ -54,7 +50,7 @@ export interface DagUitkomst {
  *
  *     werkuren_dag = Σ uren op locatie (afspraken op deze datum)
  *                  + Σ uren voorbereiding (afspraken met deze voorbereidingsdatum)
- *                  + declarabele reistijd
+ *                  + reistijd uit de ritten van deze dag, na aftrek eigen tijd
  *                  + Σ handmatige urenregels
  *
  * Welke afspraken meetellen hangt af van hun status en van de telwijze;
@@ -64,8 +60,7 @@ export function berekenDag(invoer: DagInvoer): DagUitkomst {
   const telwijze = invoer.telwijze ?? "gepland";
 
   // Afspraken die geen werk zijn, zoals "niet beschikbaar", doen nergens mee:
-  // niet in de uren, niet in de reistijd en niet in de waarschuwing voor te
-  // lange dagen.
+  // niet in de uren en niet in de waarschuwing voor te lange dagen.
   const afspraken = invoer.afspraken.filter(
     (afspraak) => afspraak.teltAlsWerktijd !== false,
   );
@@ -90,20 +85,13 @@ export function berekenDag(invoer: DagInvoer): DagUitkomst {
     )
     .reduce((totaal, afspraak) => totaal + afspraak.urenVoorbereiding, 0);
 
-  // Reistijd hoort bij de dag van het bezoek, niet bij de voorbereidingsdag.
-  const reizen = afspraken.filter(
-    (afspraak) =>
-      afspraak.datum === invoer.datum &&
-      teltReistijd(afspraak.status, telwijze) &&
-      (afspraak.reistijdEnkelMinuten ?? 0) > 0,
+  // Reistijd komt uit de ritten van deze dag (SPEC.md 5.2).
+  const reistijd = reistijdVanDag(
+    invoer.datum,
+    invoer.ritten,
+    invoer.eigenReistijdUrenPerDag,
   );
-
-  const langsteReis = langsteEnkeleReisMinuten(reizen);
-  const heeftKlantbezoek = langsteReis > 0;
-
-  const reistijdUren = heeftKlantbezoek
-    ? declarabeleReistijdUren(langsteReis, invoer.eigenReistijdUrenPerDag)
-    : 0;
+  const reistijdUren = reistijd.werktijdUren;
 
   const urenHandmatig = invoer.handmatigeUrenregels
     .filter((regel) => regel.datum === invoer.datum)
@@ -117,14 +105,13 @@ export function berekenDag(invoer: DagInvoer): DagUitkomst {
     datum: invoer.datum,
     urenOpLocatie: afrondUren(urenOpLocatie),
     urenVoorbereiding: afrondUren(urenVoorbereiding),
-    brutoReistijdUren: heeftKlantbezoek ? brutoReistijdUren(langsteReis) : 0,
-    eigenReistijdUren: heeftKlantbezoek ? invoer.eigenReistijdUrenPerDag : 0,
+    brutoReistijdUren: reistijd.brutoUren,
+    eigenReistijdUren: reistijd.eigenTijdUren,
     reistijdUren,
     urenHandmatig: afrondUren(urenHandmatig),
     totaalUren,
-    langsteEnkeleReisMinuten: langsteReis,
-    aantalReizen: reizen.length,
-    meerdereBestemmingen: reizen.length > 1,
+    aantalRitten: reistijd.aantalRitten,
+    rittenZonderReistijd: reistijd.aantalZonderReistijd,
     overschrijdtMaximum: totaalUren > invoer.maxUrenPerDagWaarschuwing,
   };
 }
@@ -145,6 +132,9 @@ export function berekenDagen(
   }
   for (const regel of invoer.handmatigeUrenregels) {
     datums.add(regel.datum);
+  }
+  for (const rit of invoer.ritten) {
+    datums.add(rit.datum);
   }
 
   return [...datums]

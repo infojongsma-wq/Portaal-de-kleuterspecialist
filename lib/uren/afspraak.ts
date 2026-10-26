@@ -56,11 +56,3 @@ export function teltVoorbereidingUren(
     (status === "geannuleerd" || status === "verzet") && voorbereidingGedaan
   );
 }
-
-/** Telt de reistijd van deze afspraak mee? (statusmatrix SPEC.md 5.5) */
-export function teltReistijd(
-  status: AfspraakStatus,
-  telwijze: Telwijze,
-): boolean {
-  return statusTelt(status, telwijze);
-}

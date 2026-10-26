@@ -162,7 +162,7 @@ export default async function OverzichtPagina({
               </TableRow>
             ) : (
               afspraken.map((afspraak) => {
-                const uren = urenVanAfspraakSync(instellingen, afspraak);
+                const uren = urenVanAfspraakSync(afspraak);
                 return (
                   <TableRow key={afspraak.id}>
                     <TableCell className="whitespace-nowrap tabular-nums">
@@ -231,10 +231,8 @@ export default async function OverzichtPagina({
       </Card>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        De reistijd in de kolom Uren is de declarabele reistijd van die afspraak.
-        Staan er meerdere afspraken op één dag, dan geldt de reistijd van de
-        verste bestemming één keer per dag — kijk voor het dagtotaal bij Mijn
-        uren.
+        De kolom Uren is op locatie plus voorbereiding. Reistijd staat niet per
+        afspraak: die telt mee via het tabblad Ritten, en staat bij Mijn uren.
       </p>
       <p className="mt-2 text-xs text-muted-foreground afdruk-verbergen">
         De Excel-export en de PDF volgen precies de filters en de sortering die

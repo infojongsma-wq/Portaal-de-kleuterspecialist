@@ -1,14 +1,14 @@
 import {
   berekenDagen,
   berekenJaarnorm,
-  declarabeleReistijdUren,
   kalenderdagen,
+  reistijdVanDag,
   teltLocatieUren,
-  teltReistijd,
   teltVoorbereidingUren,
   totaalUren,
   type AfspraakInvoer,
   type JaarnormUitkomst,
+  type RitReistijdInvoer,
   type Telwijze,
   type UrenCategorie,
   type UrenregelInvoer,
@@ -17,6 +17,8 @@ import {
   gedaneTrainingen,
   type TrainingenVanMedewerker,
 } from "@/lib/trainingen/gedaan";
+import { formatteerUrenKlok } from "@/lib/formatteer";
+import { naarRitReistijdInvoer, rittenset, rittenVan } from "./ritten";
 import type { Trainingsboekhouding } from "./trainingen";
 import { werkset, type Werkset } from "./werkset";
 import type {
@@ -83,7 +85,6 @@ export function naarAfspraakInvoer(
     voorbereidingDatum: afspraak.voorbereidingDatum,
     urenOpLocatie: afspraak.urenOpLocatie,
     urenVoorbereiding: afspraak.urenVoorbereiding,
-    reistijdEnkelMinuten: afspraak.reistijdEnkelMinuten,
     status: afspraak.status,
     voorbereidingGedaan: afspraak.voorbereidingGedaan,
     teltAlsWerktijd: soort?.teltAlsWerktijd ?? true,
@@ -162,13 +163,12 @@ function metContext(
 }
 
 function urenVanAfspraakMet(
-  instellingen: Instellingen,
   afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
   telwijze: Telwijze,
 ) {
   // Afspraken die geen werk zijn, zoals "niet beschikbaar", tellen nergens mee.
   if (afspraak.activiteitsoort && !afspraak.activiteitsoort.teltAlsWerktijd) {
-    return { opLocatie: 0, voorbereiding: 0, reistijd: 0, eigen: 0, totaal: 0 };
+    return { opLocatie: 0, voorbereiding: 0, eigen: 0, totaal: 0 };
   }
 
   // Zelf ingevulde uren, zoals literatuurstudie, zijn geen uren op locatie.
@@ -177,7 +177,7 @@ function urenVanAfspraakMet(
     const eigen = teltLocatieUren(afspraak.status, telwijze)
       ? afspraak.urenOpLocatie
       : 0;
-    return { opLocatie: 0, voorbereiding: 0, reistijd: 0, eigen, totaal: eigen };
+    return { opLocatie: 0, voorbereiding: 0, eigen, totaal: eigen };
   }
 
   const opLocatie = teltLocatieUren(afspraak.status, telwijze)
@@ -190,20 +190,12 @@ function urenVanAfspraakMet(
   )
     ? afspraak.urenVoorbereiding
     : 0;
-  const reistijd =
-    teltReistijd(afspraak.status, telwijze) && afspraak.reistijdEnkelMinuten
-      ? declarabeleReistijdUren(
-          afspraak.reistijdEnkelMinuten,
-          instellingen.eigenReistijdUrenPerDag,
-        )
-      : 0;
-
+  // Geen reistijd: die hoort bij de ritten, niet bij een afspraak (SPEC.md 5.2).
   return {
     opLocatie,
     voorbereiding,
-    reistijd,
     eigen: 0,
-    totaal: opLocatie + voorbereiding + reistijd,
+    totaal: opLocatie + voorbereiding,
   };
 }
 
@@ -398,6 +390,21 @@ export async function haalContracten(
     .sort((a, b) => b.ingangsdatum.localeCompare(a.ingangsdatum));
 }
 
+/**
+ * De ritten van een medewerker in een periode, voor de reistijd (SPEC.md 5.2).
+ * Staat de rittentabel er nog niet, dan zijn er geen ritten.
+ */
+async function rittenInPeriode(
+  medewerkerId: string,
+  vanaf: string,
+  totEnMet: string,
+): Promise<RitReistijdInvoer[]> {
+  const { ritten } = await rittenset();
+  return rittenVan(ritten, medewerkerId)
+    .filter((rit) => rit.datum >= vanaf && rit.datum <= totEnMet)
+    .map(naarRitReistijdInvoer);
+}
+
 /** Alle uren van een medewerker in een periode, per telwijze. */
 export async function urenInPeriode(
   medewerkerId: string,
@@ -420,9 +427,12 @@ export async function urenInPeriode(
     .filter((regel) => regel.datum >= vanaf && regel.datum <= totEnMet)
     .map(naarUrenregelInvoer);
 
+  const ritten = await rittenInPeriode(medewerkerId, vanaf, totEnMet);
+
   const dagen = berekenDagen({
     afspraken,
     handmatigeUrenregels: urenregels,
+    ritten,
     eigenReistijdUrenPerDag: instellingen.eigenReistijdUrenPerDag,
     maxUrenPerDagWaarschuwing: instellingen.maxUrenPerDagWaarschuwing,
     telwijze,
@@ -516,41 +526,22 @@ export async function urenregelsInPeriode(
     }
   }
 
-  // Reistijd geldt per dag: de verste bestemming één keer, min de eigen tijd.
-  const reisPerDag = new Map<
-    string,
-    { minuten: number; bestemmingen: number }
-  >();
-  for (const afspraak of afspraken) {
-    if (!binnenPeriode(afspraak.datum, vanaf, totEnMet)) continue;
-    if (!teltReistijd(afspraak.status, telwijze)) continue;
-    const minuten = afspraak.reistijdEnkelMinuten ?? 0;
-    if (minuten <= 0) continue;
-    const huidig = reisPerDag.get(afspraak.datum!) ?? {
-      minuten: 0,
-      bestemmingen: 0,
-    };
-    reisPerDag.set(afspraak.datum!, {
-      minuten: Math.max(huidig.minuten, minuten),
-      bestemmingen: huidig.bestemmingen + 1,
-    });
-  }
-
-  for (const [datum, reis] of reisPerDag) {
-    const uren = declarabeleReistijdUren(
-      reis.minuten,
+  // Reistijd komt uit de ritten, per dag na aftrek van de eigen tijd
+  // (SPEC.md 5.2). Een rit is gereden, dus hij telt in beide telwijzen.
+  const ritten = await rittenInPeriode(medewerkerId, vanaf, totEnMet);
+  for (const datum of new Set(ritten.map((rit) => rit.datum))) {
+    const reis = reistijdVanDag(
+      datum,
+      ritten,
       instellingen.eigenReistijdUrenPerDag,
     );
-    if (uren <= 0) continue;
+    if (reis.werktijdUren <= 0) continue;
     regels.push({
       id: `reis-${datum}`,
       datum,
       categorie: "reistijd",
-      uren,
-      toelichting:
-        reis.bestemmingen > 1
-          ? `Reistijd boven het uur, verste van ${reis.bestemmingen} bestemmingen`
-          : "Reistijd boven het uur enkele reis",
+      uren: reis.werktijdUren,
+      toelichting: `${reis.aantalRitten === 1 ? "1 rit" : `${reis.aantalRitten} ritten`}: ${formatteerUrenKlok(reis.brutoUren)} reistijd, ${formatteerUrenKlok(reis.eigenTijdUren)} eigen tijd eraf`,
       bron: "automatisch",
       afspraakId: null,
     });
@@ -707,29 +698,15 @@ export async function jaarnormBalans(
 }
 
 /**
- * De uren van één afspraak, zoals ze in het overzicht worden getoond.
- *
- * De reistijd is die van deze afspraak op zichzelf. Staan er meerdere
- * afspraken op één dag, dan geldt de reistijd van de verste bestemming één
- * keer per dag — kijk voor het dagtotaal bij `urenInPeriode`.
- */
-export async function urenVanAfspraak(
-  afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
-  telwijze: Telwijze = "gepland",
-) {
-  return urenVanAfspraakMet(await haalInstellingen(), afspraak, telwijze);
-}
-
-/**
- * Dezelfde berekening, maar zonder te wachten. Voor lijsten die per rij de
- * uren tonen: haal de instellingen dan één keer op en geef ze hier mee.
+ * De uren van één afspraak, zoals ze in het overzicht worden getoond: op
+ * locatie plus voorbereiding, of de zelf ingevulde uren. Reistijd hoort niet
+ * bij een afspraak maar bij de ritten (SPEC.md 5.2).
  */
 export function urenVanAfspraakSync(
-  instellingen: Instellingen,
   afspraak: Afspraak & { activiteitsoort?: Activiteitsoort },
   telwijze: Telwijze = "gepland",
 ) {
-  return urenVanAfspraakMet(instellingen, afspraak, telwijze);
+  return urenVanAfspraakMet(afspraak, telwijze);
 }
 
 // ---------------------------------------------------------------------------

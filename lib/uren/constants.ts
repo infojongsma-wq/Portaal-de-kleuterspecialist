@@ -23,6 +23,14 @@
  */
 export const FULLTIME_UREN_PER_WEEK = 40;
 
+/**
+ * De eigen reistijd per dag (`instellingen.eigen_reistijd_uren_per_dag`, 2,0
+ * uur) staat voor één reis heen en één terug: twee enkele reizen. Per enkele
+ * reis is de eigen tijd dus de helft, een uur (SPEC.md 5.2). Geen instelbare
+ * bedrijfswaarde maar de betekenis van de instelling zelf.
+ */
+export const ENKELE_REIZEN_IN_EIGEN_REISTIJD = 2;
+
 /** Uren worden met twee decimalen opgeslagen en getoond (SPEC.md 5.6). */
 export const UREN_DECIMALEN = 2;
 

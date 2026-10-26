@@ -93,7 +93,7 @@ export async function haalOverzicht(
 
   const totaal = afspraken.reduce(
     (som, afspraak) =>
-      som + urenVanAfspraakSync(instellingen, afspraak).totaal,
+      som + urenVanAfspraakSync(afspraak).totaal,
     0,
   );
 
@@ -124,8 +124,8 @@ function vergelijker(
           return a.titel.localeCompare(b.titel, "nl");
         case "uren":
           return (
-            urenVanAfspraakSync(instellingen, a).totaal -
-            urenVanAfspraakSync(instellingen, b).totaal
+            urenVanAfspraakSync(a).totaal -
+            urenVanAfspraakSync(b).totaal
           );
         case "status":
           return a.status.localeCompare(b.status, "nl");

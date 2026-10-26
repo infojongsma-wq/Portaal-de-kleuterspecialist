@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { berekenDag, berekenDagen, totaalUren } from "../dag";
-import { maakAfspraak } from "./hulp";
+import type { RitReistijdInvoer } from "../reistijd";
+import { maakAfspraak, maakRit } from "./hulp";
 
-/** Uit `instellingen`. */
+/**
+ * Uit `instellingen`, en standaard geen ritten. Een test met ritten zet
+ * `ritten` ná deze spreiding.
+ */
 const INSTELLINGEN = {
   eigenReistijdUrenPerDag: 2.0,
   maxUrenPerDagWaarschuwing: 12.0,
+  ritten: [] as RitReistijdInvoer[],
 };
 
 describe("uren per dag (SPEC.md 5.3)", () => {
-  it("training in Zwolle, enkele reis 60 minuten, telt op tot 6,00 uur", () => {
+  it("training in Zwolle, rit vice versa 2 × 60 minuten, telt op tot 6,00 uur", () => {
     const dag = berekenDag({
       datum: "2027-03-10",
       afspraken: [
@@ -17,11 +22,11 @@ describe("uren per dag (SPEC.md 5.3)", () => {
           datum: "2027-03-10",
           urenOpLocatie: 3.0,
           urenVoorbereiding: 3.0,
-          reistijdEnkelMinuten: 60,
         }),
       ],
       handmatigeUrenregels: [],
       ...INSTELLINGEN,
+      ritten: [maakRit({ reisduurEnkelMinuten: 60 })],
     });
 
     expect(dag.urenOpLocatie).toBe(3.0);
@@ -30,7 +35,7 @@ describe("uren per dag (SPEC.md 5.3)", () => {
     expect(dag.totaalUren).toBe(6.0);
   });
 
-  it("training in Utrecht, enkele reis 110 minuten, telt op tot 7,67 uur", () => {
+  it("training in Utrecht, rit vice versa 2 × 110 minuten, telt op tot 7,67 uur", () => {
     const dag = berekenDag({
       datum: "2027-03-10",
       afspraken: [
@@ -38,11 +43,11 @@ describe("uren per dag (SPEC.md 5.3)", () => {
           datum: "2027-03-10",
           urenOpLocatie: 3.0,
           urenVoorbereiding: 3.0,
-          reistijdEnkelMinuten: 110,
         }),
       ],
       handmatigeUrenregels: [],
       ...INSTELLINGEN,
+      ritten: [maakRit({ reisduurEnkelMinuten: 110 })],
     });
 
     expect(dag.brutoReistijdUren).toBe(3.67);
@@ -56,12 +61,12 @@ describe("uren per dag (SPEC.md 5.3)", () => {
       voorbereidingDatum: "2027-03-09",
       urenOpLocatie: 3.5,
       urenVoorbereiding: 1.0,
-      reistijdEnkelMinuten: 15,
     });
     const basis = {
       afspraken: [afspraak],
       handmatigeUrenregels: [],
       ...INSTELLINGEN,
+      ritten: [maakRit({ reisduurEnkelMinuten: 15 })],
     };
 
     const dagVanObservatie = berekenDag({ ...basis, datum: "2027-03-10" });
@@ -77,52 +82,77 @@ describe("uren per dag (SPEC.md 5.3)", () => {
   });
 });
 
-describe("meerdere afspraken op één dag (SPEC.md 5.2)", () => {
-  it("trekt de eigen reistijd één keer af, van de verste bestemming", () => {
+describe("reistijd alleen uit de ritten (SPEC.md 5.2)", () => {
+  it("twee scholen op één dag: hooguit 2 uur eigen tijd", () => {
     const dag = berekenDag({
       datum: "2027-03-10",
       afspraken: [
-        maakAfspraak({
-          id: "a",
-          datum: "2027-03-10",
-          urenOpLocatie: 3.0,
-          urenVoorbereiding: 0.0,
-          reistijdEnkelMinuten: 30,
-        }),
+        maakAfspraak({ id: "a", datum: "2027-03-10", urenVoorbereiding: 0 }),
         maakAfspraak({
           id: "b",
           datum: "2027-03-10",
           urenOpLocatie: 3.5,
-          urenVoorbereiding: 0.0,
-          reistijdEnkelMinuten: 90,
+          urenVoorbereiding: 0,
         }),
       ],
       handmatigeUrenregels: [],
       ...INSTELLINGEN,
+      // Thuis → school A (30), A → B (90), B → thuis (30): 2,50 − 2,00.
+      ritten: [
+        maakRit({ reisduurEnkelMinuten: 30, heenEnTerug: false }),
+        maakRit({ reisduurEnkelMinuten: 90, heenEnTerug: false }),
+        maakRit({ reisduurEnkelMinuten: 30, heenEnTerug: false }),
+      ],
     });
 
-    expect(dag.langsteEnkeleReisMinuten).toBe(90);
-    // 2 × 90 ÷ 60 = 3,00 − 2,00 eigen tijd = 1,00 (niet twee keer aftrekken).
-    expect(dag.reistijdUren).toBe(1.0);
-    expect(dag.totaalUren).toBe(7.5);
-    expect(dag.meerdereBestemmingen).toBe(true);
+    expect(dag.brutoReistijdUren).toBe(2.5);
+    expect(dag.eigenReistijdUren).toBe(2.0);
+    expect(dag.reistijdUren).toBe(0.5);
+    expect(dag.totaalUren).toBe(7.0);
+    expect(dag.aantalRitten).toBe(3);
   });
 
-  it("meldt niets bij één bestemming", () => {
+  it("een afspraak zonder rit heeft geen reistijd", () => {
     const dag = berekenDag({
       datum: "2027-03-10",
-      afspraken: [
-        maakAfspraak({ datum: "2027-03-10", reistijdEnkelMinuten: 90 }),
-      ],
+      afspraken: [maakAfspraak({ datum: "2027-03-10" })],
       handmatigeUrenregels: [],
       ...INSTELLINGEN,
     });
-    expect(dag.meerdereBestemmingen).toBe(false);
+    expect(dag.reistijdUren).toBe(0);
+    expect(dag.totaalUren).toBe(6.0);
+  });
+
+  it("een rit telt ook zonder afspraak, en in beide telwijzen", () => {
+    for (const telwijze of ["gepland", "gerealiseerd"] as const) {
+      const dag = berekenDag({
+        datum: "2027-03-10",
+        afspraken: [],
+        handmatigeUrenregels: [],
+        ...INSTELLINGEN,
+        ritten: [maakRit({ reisduurEnkelMinuten: 90 })],
+        telwijze,
+      });
+      expect(dag.reistijdUren).toBe(1.0);
+      expect(dag.totaalUren).toBe(1.0);
+    }
+  });
+
+  it("meldt ritten zonder bekende reistijd", () => {
+    const dag = berekenDag({
+      datum: "2027-03-10",
+      afspraken: [],
+      handmatigeUrenregels: [],
+      ...INSTELLINGEN,
+      ritten: [maakRit({ reisduurEnkelMinuten: null })],
+    });
+    expect(dag.reistijdUren).toBe(0);
+    expect(dag.rittenZonderReistijd).toBe(1);
   });
 });
 
-describe("dagen zonder klantbezoek (SPEC.md 5.2)", () => {
-  it("kent geen aftrek van eigen reistijd", () => {
+describe("dagen zonder ritten (SPEC.md 5.2)", () => {
+  it("kennen geen aftrek van eigen reistijd; eerder handmatig geboekte reistijd telt mee", () => {
     const dag = berekenDag({
       datum: "2027-03-11",
       afspraken: [],
@@ -176,22 +206,23 @@ describe("meerdere dagen optellen", () => {
           voorbereidingDatum: "2027-03-09",
           urenOpLocatie: 3.5,
           urenVoorbereiding: 1.0,
-          reistijdEnkelMinuten: 15,
         }),
       ],
       handmatigeUrenregels: [
         { datum: "2027-03-11", categorie: "overleg", uren: 1.0 },
       ],
       ...INSTELLINGEN,
+      ritten: [maakRit({ datum: "2027-03-12", reisduurEnkelMinuten: 90 })],
     });
 
     expect(dagen.map((dag) => dag.datum)).toEqual([
       "2027-03-09",
       "2027-03-10",
       "2027-03-11",
+      "2027-03-12",
     ]);
-    // 3,50 op locatie + 1,00 voorbereiding + 1,00 handmatig.
-    expect(totaalUren(dagen)).toBe(5.5);
+    // 3,50 op locatie + 1,00 voorbereiding + 1,00 handmatig + 1,00 reistijd.
+    expect(totaalUren(dagen)).toBe(6.5);
   });
 });
 
@@ -202,7 +233,6 @@ describe("afspraken die nog ingepland moeten worden", () => {
     voorbereidingDatum: null,
     urenOpLocatie: 3.0,
     urenVoorbereiding: 3.0,
-    reistijdEnkelMinuten: 90,
   });
 
   it("tellen op geen enkele dag mee", () => {
@@ -240,7 +270,6 @@ describe("afspraken met zelf ingevulde uren", () => {
     datum: "2027-03-10",
     urenOpLocatie: 2.5,
     urenVoorbereiding: 0,
-    reistijdEnkelMinuten: null,
     teltAlsWerktijd: true,
   });
 
@@ -250,7 +279,6 @@ describe("afspraken met zelf ingevulde uren", () => {
     datum: "2027-03-10",
     urenOpLocatie: 4.0,
     urenVoorbereiding: 0,
-    reistijdEnkelMinuten: null,
     teltAlsWerktijd: false,
   });
 

@@ -1,8 +1,9 @@
 import { cache } from "react";
 
 import { supabaseServer } from "@/lib/supabase/server";
+import type { RitReistijdInvoer } from "@/lib/uren";
 import type { Rit } from "./types";
-import { getal } from "./werkset";
+import { getal, getalOfNull } from "./werkset";
 
 /**
  * De ritten die de ingelogde gebruiker mag zien. Row Level Security bepaalt
@@ -33,6 +34,10 @@ function naarRit(rij: Rij): Rit {
     heenEnTerug: Boolean(rij.heen_en_terug),
     kmEnkel: getal(rij.km_enkel),
     vergoedingPerKm: getal(rij.vergoeding_per_km),
+    // Ontbreken de kolommen nog (SQL van de reistijd niet gedraaid), dan is
+    // de reistijd onbekend.
+    reisduurEnkelMinuten: getalOfNull(rij.reisduur_enkel_minuten),
+    afwijkendeReistijdMinuten: getalOfNull(rij.afwijkende_reistijd_minuten),
     aangemaaktOp: rij.aangemaakt_op as string,
   };
 }
@@ -57,6 +62,16 @@ export const rittenset = cache(async (): Promise<Rittenset> => {
 
   return { beschikbaar: true, ritten: (data ?? []).map(naarRit) };
 });
+
+/** De velden die de reistijdberekening nodig heeft (SPEC.md 5.2). */
+export function naarRitReistijdInvoer(rit: Rit): RitReistijdInvoer {
+  return {
+    datum: rit.datum,
+    heenEnTerug: rit.heenEnTerug,
+    reisduurEnkelMinuten: rit.reisduurEnkelMinuten,
+    afwijkendeReistijdMinuten: rit.afwijkendeReistijdMinuten,
+  };
+}
 
 /** De ritten van één medewerker, op datum en daarna op volgorde van invoer. */
 export function rittenVan(ritten: Rit[], medewerkerId: string): Rit[] {

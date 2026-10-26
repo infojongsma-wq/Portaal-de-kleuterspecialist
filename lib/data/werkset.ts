@@ -54,7 +54,7 @@ export function getal(waarde: unknown): number {
   return typeof waarde === "number" ? waarde : Number(waarde);
 }
 
-function getalOfNull(waarde: unknown): number | null {
+export function getalOfNull(waarde: unknown): number | null {
   if (waarde === null || waarde === undefined || waarde === "") return null;
   return typeof waarde === "number" ? waarde : Number(waarde);
 }

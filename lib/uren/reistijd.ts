@@ -1,53 +1,113 @@
 import { afrondMinuten, afrondUren } from "./afronding";
-import type { AfspraakInvoer } from "./types";
+import { ENKELE_REIZEN_IN_EIGEN_REISTIJD } from "./constants";
 
 /**
- * Bruto reistijd voor een dag met klantbezoek: heen en terug (SPEC.md 5.2).
- * Alleen bedoeld voor weergave — voor de declarabele uren wordt de onafgeronde
- * waarde gebruikt, zodat er niet twee keer wordt afgerond.
+ * Reistijd uit de rittenregistratie (SPEC.md 5.2).
+ *
+ * Reistijd hoort niet meer bij een afspraak, maar bij een gereden rit. Per rit
+ * staat de berekende reisduur van de enkele reis (routeplanner, zonder files)
+ * en eventueel een afwijkende reistijd die de medewerker zelf invult, bij
+ * files of een omleiding. Per dag gaat de eigen tijd eraf: een uur per enkele
+ * reis, met een maximum van de eigen reistijd per dag uit `instellingen`.
+ *
+ *     reistijd_dag   = Σ reistijd per rit
+ *     eigen_tijd_dag = MIN(eigen reistijd per dag ;
+ *                          enkele reizen × eigen reistijd per dag ÷ 2)
+ *     werktijd_dag   = MAX(0 ; reistijd_dag − eigen_tijd_dag)
  */
-export function brutoReistijdUren(reistijdEnkelMinuten: number): number {
-  return afrondUren(brutoReistijdUrenExact(reistijdEnkelMinuten));
+
+/** De velden van een rit die de reistijdberekening nodig heeft. */
+export interface RitReistijdInvoer {
+  /** ISO `jjjj-mm-dd`. */
+  datum: string;
+  /** "Vice versa": heen en terug, dus twee enkele reizen. */
+  heenEnTerug: boolean;
+  /**
+   * De berekende reisduur van de enkele reis in minuten, al afgerond.
+   * `null` als die (nog) niet bekend is.
+   */
+  reisduurEnkelMinuten: number | null;
+  /**
+   * De reistijd van de hele rit (bij vice versa heen en terug samen) zoals de
+   * medewerker die zelf heeft ingevuld. Gaat vóór de berekende reisduur.
+   * `null` als ze de berekende reisduur aanhoudt.
+   */
+  afwijkendeReistijdMinuten: number | null;
 }
 
-function brutoReistijdUrenExact(reistijdEnkelMinuten: number): number {
-  return (2 * reistijdEnkelMinuten) / 60;
+export interface ReistijdVanDag {
+  /** Alle reistijd van de ritten van deze dag, vóór aftrek. */
+  brutoUren: number;
+  /** De eigen tijd die eraf ging; nooit meer dan de bruto reistijd. */
+  eigenTijdUren: number;
+  /** Wat als werktijd telt. */
+  werktijdUren: number;
+  /** Ritten waarvan de reistijd meetelt. */
+  aantalRitten: number;
+  /** Ritten zonder bekende reistijd; die tellen nergens mee. */
+  aantalZonderReistijd: number;
+}
+
+/** Twee enkele reizen bij vice versa, anders één. */
+export function enkeleReizenVanRit(rit: Pick<RitReistijdInvoer, "heenEnTerug">): number {
+  return rit.heenEnTerug ? 2 : 1;
 }
 
 /**
- * Declarabele reistijd voor een dag met klantbezoek (SPEC.md 5.2):
- *
- *     declarabel = MAX(0 ; 2 × enkele reis ÷ 60 − eigen reistijd per dag)
- *
- * De eigen tijd gaat er **één keer per dag** af, niet één keer per afspraak.
- * Bij meerdere afspraken op één dag geeft de aanroeper daarom de langste
- * enkele reis door, niet de som — zie `langsteEnkeleReisMinuten`.
- *
- * Op dagen zonder klantbezoek geldt de aftrek niet; reistijd naar bijvoorbeeld
- * een netwerkbijeenkomst wordt als handmatige urenregel geboekt.
+ * De reistijd van één rit in minuten: de afwijkende reistijd als die is
+ * ingevuld, anders de berekende reisduur (dubbel bij vice versa). `null` als
+ * geen van beide bekend is.
  */
-export function declarabeleReistijdUren(
-  reistijdEnkelMinuten: number,
+export function reistijdVanRitMinuten(rit: RitReistijdInvoer): number | null {
+  if (rit.afwijkendeReistijdMinuten !== null) return rit.afwijkendeReistijdMinuten;
+  if (rit.reisduurEnkelMinuten === null) return null;
+  return rit.reisduurEnkelMinuten * enkeleReizenVanRit(rit);
+}
+
+/**
+ * De reistijd van één dag (SPEC.md 5.2). Geef de ritten van die dag mee; een
+ * rit op een andere datum wordt genegeerd.
+ *
+ * Een rit zonder bekende reistijd telt nergens mee, ook niet bij de eigen
+ * tijd: anders zou hij de reistijd van de andere ritten op die dag opeten.
+ */
+export function reistijdVanDag(
+  datum: string,
+  ritten: RitReistijdInvoer[],
   eigenReistijdUrenPerDag: number,
-): number {
-  const bruto = brutoReistijdUrenExact(reistijdEnkelMinuten);
-  return afrondUren(Math.max(0, bruto - eigenReistijdUrenPerDag));
-}
+): ReistijdVanDag {
+  const vanDeDag = ritten.filter((rit) => rit.datum === datum);
+  const bekend = vanDeDag.filter((rit) => reistijdVanRitMinuten(rit) !== null);
 
-/**
- * De langste enkele reis van een dag. Geeft `0` als er geen afspraak met
- * reistijd is.
- */
-export function langsteEnkeleReisMinuten(afspraken: AfspraakInvoer[]): number {
-  return afspraken.reduce(
-    (langste, afspraak) => Math.max(langste, afspraak.reistijdEnkelMinuten ?? 0),
+  const minuten = bekend.reduce(
+    (som, rit) => som + (reistijdVanRitMinuten(rit) ?? 0),
     0,
   );
+  const enkeleReizen = bekend.reduce(
+    (som, rit) => som + enkeleReizenVanRit(rit),
+    0,
+  );
+
+  const bruto = minuten / 60;
+  const eigenTijd = Math.min(
+    eigenReistijdUrenPerDag,
+    (enkeleReizen * eigenReistijdUrenPerDag) / ENKELE_REIZEN_IN_EIGEN_REISTIJD,
+    bruto,
+  );
+
+  return {
+    brutoUren: afrondUren(bruto),
+    eigenTijdUren: afrondUren(eigenTijd),
+    werktijdUren: afrondUren(Math.max(0, bruto - eigenTijd)),
+    aantalRitten: bekend.length,
+    aantalZonderReistijd: vanDeDag.length - bekend.length,
+  };
 }
 
 /**
- * Rondt automatisch bepaalde reistijd af vóór opslag (SPEC.md 5.6).
- * Roep dit niet aan voor handmatig ingevoerde reistijd.
+ * Rondt de berekende reisduur af vóór opslag (SPEC.md 5.6), op
+ * `instellingen.reistijd_afronding_minuten`. Niet voor een reistijd die de
+ * medewerker zelf invult; die blijft zoals ingevuld.
  */
 export function afrondAutomatischeReistijdMinuten(
   minuten: number,

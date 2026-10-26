@@ -47,9 +47,9 @@ export async function GET(verzoek: Request) {
     { header: "Titel", key: "titel", width: 38 },
     { header: "Op locatie", key: "opLocatie", width: 12 },
     { header: "Voorbereiding", key: "voorbereiding", width: 14 },
-    { header: "Reistijd", key: "reistijd", width: 11 },
-    // Zelf ingevulde uren, zoals literatuurstudie: geen locatie, geen
-    // voorbereiding, geen reistijd.
+    // Zelf ingevulde uren, zoals literatuurstudie: geen locatie en geen
+    // voorbereiding. Reistijd staat niet per afspraak; die komt uit de ritten
+    // (SPEC.md 5.2).
     { header: "Eigen uren", key: "eigen", width: 12 },
     { header: "Totaal uren", key: "totaal", width: 13 },
     { header: "Status", key: "status", width: 14 },
@@ -67,7 +67,7 @@ export async function GET(verzoek: Request) {
   kop.height = 20;
 
   for (const afspraak of afspraken) {
-    const uren = urenVanAfspraakSync(instellingen, afspraak);
+    const uren = urenVanAfspraakSync(afspraak);
     blad.addRow({
       datum: afspraak.datum
         ? formatteerDatum(afspraak.datum)
@@ -78,7 +78,6 @@ export async function GET(verzoek: Request) {
       titel: afspraak.titel,
       opLocatie: uren.opLocatie,
       voorbereiding: uren.voorbereiding,
-      reistijd: uren.reistijd,
       eigen: uren.eigen,
       totaal: uren.totaal,
       // Wie niet beschikbaar is, werkt niet; de rij staat er ter informatie.
@@ -89,7 +88,7 @@ export async function GET(verzoek: Request) {
   }
 
   // Urenkolommen als getal met twee decimalen.
-  for (const kolom of ["opLocatie", "voorbereiding", "reistijd", "eigen", "totaal"]) {
+  for (const kolom of ["opLocatie", "voorbereiding", "eigen", "totaal"]) {
     blad.getColumn(kolom).numFmt = "0.00";
     blad.getColumn(kolom).alignment = { horizontal: "right" };
   }
@@ -101,15 +100,14 @@ export async function GET(verzoek: Request) {
       titel: "Totaal",
       opLocatie: { formula: `SUM(F2:F${laatste})` },
       voorbereiding: { formula: `SUM(G2:G${laatste})` },
-      reistijd: { formula: `SUM(H2:H${laatste})` },
-      eigen: { formula: `SUM(I2:I${laatste})` },
-      totaal: { formula: `SUM(J2:J${laatste})` },
+      eigen: { formula: `SUM(H2:H${laatste})` },
+      totaal: { formula: `SUM(I2:I${laatste})` },
     });
     totaalregel.font = { bold: true };
     totaalregel.border = { top: { style: "thin" } };
   }
 
-  blad.autoFilter = { from: "A1", to: `K${Math.max(blad.rowCount, 1)}` };
+  blad.autoFilter = { from: "A1", to: `J${Math.max(blad.rowCount, 1)}` };
 
   const inhoud = await werkboek.xlsx.writeBuffer();
   const bestandsnaam = `urenoverzicht-${new Date().toISOString().slice(0, 10)}.xlsx`;

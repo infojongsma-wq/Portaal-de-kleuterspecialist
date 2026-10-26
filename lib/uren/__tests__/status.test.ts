@@ -1,16 +1,14 @@
 import { describe, expect, it } from "vitest";
-import {
-  teltLocatieUren,
-  teltReistijd,
-  teltVoorbereidingUren,
-} from "../afspraak";
+import { teltLocatieUren, teltVoorbereidingUren } from "../afspraak";
 import { berekenDag } from "../dag";
 import type { AfspraakStatus, Telwijze } from "../types";
 import { maakAfspraak } from "./hulp";
 
+/** Uit `instellingen`. Reistijd komt uit de ritten en speelt hier geen rol. */
 const INSTELLINGEN = {
   eigenReistijdUrenPerDag: 2.0,
   maxUrenPerDagWaarschuwing: 12.0,
+  ritten: [],
 };
 
 interface Verwachting {
@@ -18,7 +16,6 @@ interface Verwachting {
   voorbereidingGedaan: boolean;
   locatie: boolean;
   voorbereiding: boolean;
-  reistijd: boolean;
 }
 
 /**
@@ -27,24 +24,24 @@ interface Verwachting {
  */
 const MATRIX: Record<Telwijze, Verwachting[]> = {
   gepland: [
-    { status: "gepland", voorbereidingGedaan: false, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "gepland", voorbereidingGedaan: true, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "voltooid", voorbereidingGedaan: false, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "voltooid", voorbereidingGedaan: true, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "geannuleerd", voorbereidingGedaan: false, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "geannuleerd", voorbereidingGedaan: true, locatie: false, voorbereiding: true, reistijd: false },
-    { status: "verzet", voorbereidingGedaan: false, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "verzet", voorbereidingGedaan: true, locatie: false, voorbereiding: true, reistijd: false },
+    { status: "gepland", voorbereidingGedaan: false, locatie: true, voorbereiding: true },
+    { status: "gepland", voorbereidingGedaan: true, locatie: true, voorbereiding: true },
+    { status: "voltooid", voorbereidingGedaan: false, locatie: true, voorbereiding: true },
+    { status: "voltooid", voorbereidingGedaan: true, locatie: true, voorbereiding: true },
+    { status: "geannuleerd", voorbereidingGedaan: false, locatie: false, voorbereiding: false },
+    { status: "geannuleerd", voorbereidingGedaan: true, locatie: false, voorbereiding: true },
+    { status: "verzet", voorbereidingGedaan: false, locatie: false, voorbereiding: false },
+    { status: "verzet", voorbereidingGedaan: true, locatie: false, voorbereiding: true },
   ],
   gerealiseerd: [
-    { status: "gepland", voorbereidingGedaan: false, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "gepland", voorbereidingGedaan: true, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "voltooid", voorbereidingGedaan: false, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "voltooid", voorbereidingGedaan: true, locatie: true, voorbereiding: true, reistijd: true },
-    { status: "geannuleerd", voorbereidingGedaan: false, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "geannuleerd", voorbereidingGedaan: true, locatie: false, voorbereiding: true, reistijd: false },
-    { status: "verzet", voorbereidingGedaan: false, locatie: false, voorbereiding: false, reistijd: false },
-    { status: "verzet", voorbereidingGedaan: true, locatie: false, voorbereiding: true, reistijd: false },
+    { status: "gepland", voorbereidingGedaan: false, locatie: false, voorbereiding: false },
+    { status: "gepland", voorbereidingGedaan: true, locatie: false, voorbereiding: false },
+    { status: "voltooid", voorbereidingGedaan: false, locatie: true, voorbereiding: true },
+    { status: "voltooid", voorbereidingGedaan: true, locatie: true, voorbereiding: true },
+    { status: "geannuleerd", voorbereidingGedaan: false, locatie: false, voorbereiding: false },
+    { status: "geannuleerd", voorbereidingGedaan: true, locatie: false, voorbereiding: true },
+    { status: "verzet", voorbereidingGedaan: false, locatie: false, voorbereiding: false },
+    { status: "verzet", voorbereidingGedaan: true, locatie: false, voorbereiding: true },
   ],
 };
 
@@ -67,9 +64,6 @@ describe("statusmatrix (SPEC.md 5.5)", () => {
               telwijze,
             ),
           ).toBe(verwacht.voorbereiding);
-          expect(teltReistijd(verwacht.status, telwijze)).toBe(
-            verwacht.reistijd,
-          );
         });
       }
     });
@@ -89,7 +83,6 @@ describe("statusmatrix doorgerekend in een dagtotaal", () => {
           datum: "2027-03-10",
           urenOpLocatie: 3.0,
           urenVoorbereiding: 3.0,
-          reistijdEnkelMinuten: 90,
           status,
           voorbereidingGedaan,
         }),
@@ -101,13 +94,13 @@ describe("statusmatrix doorgerekend in een dagtotaal", () => {
   }
 
   it("een geplande afspraak telt wel in gepland, niet in gerealiseerd", () => {
-    expect(dagVoor("gepland", false, "gepland").totaalUren).toBe(7.0);
+    expect(dagVoor("gepland", false, "gepland").totaalUren).toBe(6.0);
     expect(dagVoor("gepland", false, "gerealiseerd").totaalUren).toBe(0);
   });
 
   it("een voltooide afspraak telt in beide kolommen", () => {
-    expect(dagVoor("voltooid", false, "gepland").totaalUren).toBe(7.0);
-    expect(dagVoor("voltooid", false, "gerealiseerd").totaalUren).toBe(7.0);
+    expect(dagVoor("voltooid", false, "gepland").totaalUren).toBe(6.0);
+    expect(dagVoor("voltooid", false, "gerealiseerd").totaalUren).toBe(6.0);
   });
 
   it("een geannuleerde afspraak telt alleen de gedane voorbereiding", () => {
@@ -116,7 +109,6 @@ describe("statusmatrix doorgerekend in een dagtotaal", () => {
     const metVoorbereiding = dagVoor("geannuleerd", true, "gerealiseerd");
     expect(metVoorbereiding.urenVoorbereiding).toBe(3.0);
     expect(metVoorbereiding.urenOpLocatie).toBe(0);
-    expect(metVoorbereiding.reistijdUren).toBe(0);
     expect(metVoorbereiding.totaalUren).toBe(3.0);
   });
 
@@ -124,6 +116,5 @@ describe("statusmatrix doorgerekend in een dagtotaal", () => {
     const verzet = dagVoor("verzet", true, "gerealiseerd");
     expect(verzet.urenOpLocatie).toBe(0);
     expect(verzet.urenVoorbereiding).toBe(3.0);
-    expect(verzet.reistijdUren).toBe(0);
   });
 });

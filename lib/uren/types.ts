@@ -24,15 +24,13 @@ export type UrenCategorie =
 /**
  * De categorieën die de medewerker zelf kan boeken, met hun label.
  *
- * Reistijd staat er als "boven het uur enkele reis" in: de eerste 60 minuten
- * heen en de eerste 60 minuten terug zijn eigen tijd (SPEC.md 5.2, waar dat
- * als 2,0 uur per dag staat).
+ * Reistijd staat er niet meer in: die komt uit de rittenregistratie (SPEC.md
+ * 5.2). Eerder handmatig geboekte reistijd blijft gewoon meetellen.
  */
 export const HANDMATIGE_CATEGORIEEN = [
   { waarde: "inlezen_trainingen", label: "Inlezen trainingen" },
   { waarde: "literatuur_lezen", label: "Literatuur lezen" },
   { waarde: "overleg", label: "Overleg" },
-  { waarde: "reistijd", label: "Reistijd boven het uur enkele reis" },
   { waarde: "overig", label: "Overig" },
 ] as const satisfies ReadonlyArray<{ waarde: UrenCategorie; label: string }>;
 
@@ -40,7 +38,7 @@ export const HANDMATIGE_CATEGORIEEN = [
 export const CATEGORIELABELS: Record<UrenCategorie, string> = {
   op_locatie: "Op locatie",
   voorbereiding: "Voorbereiding",
-  reistijd: "Reistijd boven het uur enkele reis",
+  reistijd: "Reistijd",
   inlezen_trainingen: "Inlezen trainingen",
   literatuur_lezen: "Literatuur lezen",
   overleg: "Overleg",
@@ -78,8 +76,6 @@ export interface AfspraakInvoer {
   urenOpLocatie: number;
   /** Overgenomen uit de activiteitsoort. */
   urenVoorbereiding: number;
-  /** Enkele reis vanaf de standplaats van de medewerker, in minuten. */
-  reistijdEnkelMinuten: number | null;
   status: AfspraakStatus;
   voorbereidingGedaan: boolean;
   /**

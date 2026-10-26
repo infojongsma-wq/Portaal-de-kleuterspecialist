@@ -1,70 +1,169 @@
 import { describe, expect, it } from "vitest";
 import {
   afrondAutomatischeReistijdMinuten,
-  brutoReistijdUren,
-  declarabeleReistijdUren,
-  langsteEnkeleReisMinuten,
+  reistijdVanDag,
+  reistijdVanRitMinuten,
 } from "../reistijd";
-import { maakAfspraak } from "./hulp";
+import { maakRit } from "./hulp";
 
 /** Uit `instellingen.eigen_reistijd_uren_per_dag`, standaardwaarde. */
 const EIGEN_REISTIJD = 2.0;
+const DAG = "2027-03-10";
+
+describe("reistijd van een rit (SPEC.md 5.2)", () => {
+  it("telt de berekende reisduur dubbel bij vice versa", () => {
+    expect(reistijdVanRitMinuten(maakRit({ reisduurEnkelMinuten: 45 }))).toBe(90);
+    expect(
+      reistijdVanRitMinuten(maakRit({ reisduurEnkelMinuten: 45, heenEnTerug: false })),
+    ).toBe(45);
+  });
+
+  it("neemt de afwijkende reistijd als die is ingevuld, zonder te verdubbelen", () => {
+    // Berekend 2 × 60 minuten, maar door files 2 uur en 45 minuten in totaal.
+    expect(
+      reistijdVanRitMinuten(maakRit({ reisduurEnkelMinuten: 60, afwijkendeReistijdMinuten: 165 })),
+    ).toBe(165);
+  });
+
+  it("is onbekend zonder berekende en zonder afwijkende reistijd", () => {
+    expect(reistijdVanRitMinuten(maakRit({ reisduurEnkelMinuten: null }))).toBeNull();
+  });
+});
 
 describe("reistijd per dag (SPEC.md 5.2)", () => {
-  // Exact de tabel uit SPEC.md 5.2.
+  // De tabel uit SPEC.md 5.2.
   const testgevallen: Array<{
-    enkeleReis: number;
+    omschrijving: string;
+    ritten: ReturnType<typeof maakRit>[];
     bruto: number;
-    declarabel: number;
+    eigen: number;
+    werktijd: number;
   }> = [
-    { enkeleReis: 0, bruto: 0.0, declarabel: 0.0 },
-    { enkeleReis: 35, bruto: 1.17, declarabel: 0.0 },
-    { enkeleReis: 60, bruto: 2.0, declarabel: 0.0 },
-    { enkeleReis: 61, bruto: 2.03, declarabel: 0.03 },
-    { enkeleReis: 90, bruto: 3.0, declarabel: 1.0 },
-    { enkeleReis: 135, bruto: 4.5, declarabel: 2.5 },
-    { enkeleReis: 160, bruto: 5.33, declarabel: 3.33 },
+    {
+      omschrijving: "vice versa, 2 × 35 minuten",
+      ritten: [maakRit({ reisduurEnkelMinuten: 35 })],
+      bruto: 1.17,
+      eigen: 1.17,
+      werktijd: 0,
+    },
+    {
+      omschrijving: "vice versa, 2 × 60 minuten",
+      ritten: [maakRit({ reisduurEnkelMinuten: 60 })],
+      bruto: 2.0,
+      eigen: 2.0,
+      werktijd: 0,
+    },
+    {
+      omschrijving: "vice versa, afwijkende reistijd 2 uur en 2 minuten",
+      ritten: [maakRit({ afwijkendeReistijdMinuten: 122 })],
+      bruto: 2.03,
+      eigen: 2.0,
+      werktijd: 0.03,
+    },
+    {
+      omschrijving: "vice versa, 2 × 90 minuten",
+      ritten: [maakRit({ reisduurEnkelMinuten: 90 })],
+      bruto: 3.0,
+      eigen: 2.0,
+      werktijd: 1.0,
+    },
+    {
+      omschrijving: "vice versa, 2 × 135 minuten",
+      ritten: [maakRit({ reisduurEnkelMinuten: 135 })],
+      bruto: 4.5,
+      eigen: 2.0,
+      werktijd: 2.5,
+    },
+    {
+      omschrijving: "vice versa, berekend 2 × 60 minuten, door files 2 uur en 45 minuten",
+      ritten: [maakRit({ reisduurEnkelMinuten: 60, afwijkendeReistijdMinuten: 165 })],
+      bruto: 2.75,
+      eigen: 2.0,
+      werktijd: 0.75,
+    },
+    {
+      omschrijving: "één enkele reis van 90 minuten: een uur eigen tijd",
+      ritten: [maakRit({ reisduurEnkelMinuten: 90, heenEnTerug: false })],
+      bruto: 1.5,
+      eigen: 1.0,
+      werktijd: 0.5,
+    },
+    {
+      omschrijving: "drie enkele reizen, 30 + 90 + 30 minuten: hooguit 2 uur eigen tijd",
+      ritten: [
+        maakRit({ reisduurEnkelMinuten: 30, heenEnTerug: false }),
+        maakRit({ reisduurEnkelMinuten: 90, heenEnTerug: false }),
+        maakRit({ reisduurEnkelMinuten: 30, heenEnTerug: false }),
+      ],
+      bruto: 2.5,
+      eigen: 2.0,
+      werktijd: 0.5,
+    },
+    {
+      omschrijving: "twee ritten vice versa, 2 × 45 en 2 × 30 minuten",
+      ritten: [
+        maakRit({ reisduurEnkelMinuten: 45 }),
+        maakRit({ reisduurEnkelMinuten: 30 }),
+      ],
+      bruto: 2.5,
+      eigen: 2.0,
+      werktijd: 0.5,
+    },
   ];
 
-  for (const { enkeleReis, bruto, declarabel } of testgevallen) {
-    it(`enkele reis van ${enkeleReis} minuten geeft ${bruto} bruto en ${declarabel} declarabel`, () => {
-      expect(brutoReistijdUren(enkeleReis)).toBe(bruto);
-      expect(declarabeleReistijdUren(enkeleReis, EIGEN_REISTIJD)).toBe(
-        declarabel,
-      );
+  for (const { omschrijving, ritten, bruto, eigen, werktijd } of testgevallen) {
+    it(omschrijving, () => {
+      const dag = reistijdVanDag(DAG, ritten, EIGEN_REISTIJD);
+      expect(dag.brutoUren).toBe(bruto);
+      expect(dag.eigenTijdUren).toBe(eigen);
+      expect(dag.werktijdUren).toBe(werktijd);
     });
   }
 
-  it("wordt nooit negatief", () => {
-    expect(declarabeleReistijdUren(5, EIGEN_REISTIJD)).toBe(0);
+  it("telt alleen de ritten van die dag", () => {
+    const dag = reistijdVanDag(
+      DAG,
+      [maakRit({ reisduurEnkelMinuten: 90 }), maakRit({ datum: "2027-03-11", reisduurEnkelMinuten: 90 })],
+      EIGEN_REISTIJD,
+    );
+    expect(dag.werktijdUren).toBe(1.0);
+    expect(dag.aantalRitten).toBe(1);
+  });
+
+  it("laat een rit zonder reistijd buiten de berekening, ook bij de eigen tijd", () => {
+    const dag = reistijdVanDag(
+      DAG,
+      [
+        maakRit({ reisduurEnkelMinuten: 90, heenEnTerug: false }),
+        maakRit({ reisduurEnkelMinuten: null }),
+      ],
+      EIGEN_REISTIJD,
+    );
+    // Alleen de enkele reis van 90 minuten: 1,50 − 1,00 eigen tijd.
+    expect(dag.werktijdUren).toBe(0.5);
+    expect(dag.aantalRitten).toBe(1);
+    expect(dag.aantalZonderReistijd).toBe(1);
+  });
+
+  it("geeft niets op een dag zonder ritten", () => {
+    expect(reistijdVanDag(DAG, [], EIGEN_REISTIJD)).toEqual({
+      brutoUren: 0,
+      eigenTijdUren: 0,
+      werktijdUren: 0,
+      aantalRitten: 0,
+      aantalZonderReistijd: 0,
+    });
   });
 
   it("volgt een gewijzigde eigen reistijd uit de instellingen", () => {
     // De 2 uur is instelbaar en staat daarom niet in de code.
-    expect(declarabeleReistijdUren(90, 1.0)).toBe(2.0);
-    expect(declarabeleReistijdUren(90, 0)).toBe(3.0);
+    const ritten = [maakRit({ reisduurEnkelMinuten: 90 })];
+    expect(reistijdVanDag(DAG, ritten, 1.0).werktijdUren).toBe(2.0);
+    expect(reistijdVanDag(DAG, ritten, 0).werktijdUren).toBe(3.0);
   });
 });
 
-describe("langste enkele reis van een dag (SPEC.md 5.2)", () => {
-  it("neemt de verste bestemming, niet de som", () => {
-    const afspraken = [
-      maakAfspraak({ id: "a", reistijdEnkelMinuten: 25 }),
-      maakAfspraak({ id: "b", reistijdEnkelMinuten: 90 }),
-      maakAfspraak({ id: "c", reistijdEnkelMinuten: 40 }),
-    ];
-    expect(langsteEnkeleReisMinuten(afspraken)).toBe(90);
-  });
-
-  it("geeft 0 zonder afspraken met reistijd", () => {
-    expect(langsteEnkeleReisMinuten([])).toBe(0);
-    expect(
-      langsteEnkeleReisMinuten([maakAfspraak({ reistijdEnkelMinuten: null })]),
-    ).toBe(0);
-  });
-});
-
-describe("afronding van automatisch bepaalde reistijd (SPEC.md 5.6)", () => {
+describe("afronding van de berekende reisduur (SPEC.md 5.6)", () => {
   it("rondt af op hele stappen van 5 minuten", () => {
     expect(afrondAutomatischeReistijdMinuten(61, 5)).toBe(60);
     expect(afrondAutomatischeReistijdMinuten(63, 5)).toBe(65);

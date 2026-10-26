@@ -170,7 +170,7 @@ Instelbaar in het beheerdersportaal. **Nooit hardcoderen in de applicatiecode.**
 
 Niet elke afspraak heeft een school. De soorten vallen in twee groepen:
 
-- **Op school** (`handmatige_uren = false`) — Training en Observatie. De afspraak hoort bij een school. De uren liggen per soort vast en de reistijd volgt uit de school.
+- **Op school** (`handmatige_uren = false`) — Training en Observatie. De afspraak hoort bij een school. De uren liggen per soort vast. Reistijd hoort niet bij de afspraak maar bij de rit (5.2).
 - **Anders** (`handmatige_uren = true`) — Literatuurstudie, Overig en Niet beschikbaar. Geen school, dus ook geen contactpersoon, geen voorbereiding en geen reistijd. De medewerker vult het aantal uren per afspraak zelf in.
 
 ```sql
@@ -221,7 +221,7 @@ eindtijd              time
 voorbereiding_datum   date not null            -- default = datum, aanpasbaar
 uren_op_locatie       numeric(4,2) not null    -- overgenomen uit activiteitsoort
 uren_voorbereiding    numeric(4,2) not null
-reistijd_enkel_minuten integer                 -- overgenomen uit klant
+reistijd_enkel_minuten integer                 -- telt niet meer mee; reistijd komt uit de ritten (5.2)
 reisafstand_enkel_km  numeric(6,1)
 reisgegevens_bron     text check (reisgegevens_bron in ('automatisch','handmatig'))
 
@@ -239,7 +239,7 @@ gewijzigd_door        uuid references profielen(id)
 
 **Op school of anders.** Of een afspraak een school heeft, volgt uit de soort (4.5):
 
-- **Op school:** `klant_id` is verplicht. Uren en reistijd worden bij het opslaan overgenomen uit de soort en de school.
+- **Op school:** `klant_id` is verplicht. De uren worden bij het opslaan overgenomen uit de soort. De reistijdkolommen worden niet meer gevuld en tellen niet mee: reistijd komt uit de ritten (5.2). Ze blijven staan voor eerdere gegevens.
 - **Anders:** `klant_id`, `contactpersoon_id`, de reisgegevens en `afspraken_met_klant` blijven leeg. De zelf ingevulde uren staan in `uren_op_locatie`, `uren_voorbereiding` is 0 en `voorbereiding_datum` is gelijk aan `datum`. Een datum is verplicht.
 
 De database staat een lege `klant_id` toe. Dat een afspraak op school ook echt een school heeft, controleert de server bij het opslaan.
@@ -336,7 +336,11 @@ naar_plaats        text not null
 heen_en_terug      boolean not null default false -- "vice versa": de km tellen dubbel
 km_enkel           numeric(6,1) not null check (km_enkel > 0)
 vergoeding_per_km  numeric(5,3) not null          -- vastgelegd bij het opslaan
+reisduur_enkel_minuten      integer               -- routeplanner, zonder files, afgerond (5.2, 5.6)
+afwijkende_reistijd_minuten integer               -- door de medewerker ingevuld, hele rit
 ```
+
+- De reistijd van de rit telt mee voor de uren (5.2). `reisduur_enkel_minuten` komt uit de routeplanner, net als de kilometers. Bij files of een omleiding vult de medewerker met **Afwijkende reistijd** de werkelijke reistijd van de hele rit in (bij vice versa heen en terug samen); die gaat dan voor. Een verantwoording is niet nodig.
 
 - Van en naar zijn een plaats ("Hengelo"), een adres ("Schoolweg 5, 5678 CD Hengelo") of een school uit `klanten`, als naam met adres ("De Proeftuin, Schoolweg 5, 5678 CD Hengelo"). Naam en adres staan zo in de rit zelf, zodat ook later nog te zien is waar de rit heen ging. 'Thuis' staat voor het thuisadres van de medewerker: de standplaats in `profielen` (4.1).
 - De vergoeding per km wordt bij het opslaan overgenomen uit `instellingen.kilometervergoeding_per_km`. Een latere wijziging van de vergoeding verandert eerdere ritten dus niet, net zoals bij de uren van een afspraak (4.6).
@@ -400,31 +404,46 @@ basisuren = uren_op_locatie + uren_voorbereiding
 
 De voorbereidingsuren worden geboekt op `voorbereiding_datum`, de locatie-uren op `datum`. Standaard zijn die gelijk, maar ze mogen verschillen.
 
-**Afspraken 'anders'** hebben geen school, dus geen voorbereiding en geen reistijd (5.2). De zelf ingevulde uren tellen op `datum`, in de urenverantwoording onder de `urencategorie` van de soort. Een soort met `telt_als_werktijd = false`, zoals Niet beschikbaar, staat wel in de agenda maar telt nergens mee: niet in de dagtotalen, niet in de reistijd, niet in de waarschuwing bij lange dagen en niet in de jaarnorm.
+Een afspraak heeft geen reistijd: die komt uit de ritten (5.2).
+
+**Afspraken 'anders'** hebben geen school, dus geen voorbereiding. De zelf ingevulde uren tellen op `datum`, in de urenverantwoording onder de `urencategorie` van de soort. Een soort met `telt_als_werktijd = false`, zoals Niet beschikbaar, staat wel in de agenda maar telt nergens mee: niet in de dagtotalen, niet in de waarschuwing bij lange dagen en niet in de jaarnorm.
 
 ### 5.2 Reistijd per dag
 
+Reistijd komt uit de rittenregistratie (4.11, 6.7), niet uit de afspraken. Pas als een rit is ingevuld, telt de reistijd mee. Dat geldt met terugwerkende kracht, voor alle afspraken en ritten.
+
 ```
-brutoreistijd_dag    = 2 × reistijd_enkel_minuten ÷ 60
-eigen_tijd           = instellingen.eigen_reistijd_uren_per_dag  (2,0)
-declarabele_reistijd = MAX(0 ; brutoreistijd_dag − eigen_tijd)
+reistijd_rit   = afwijkende_reistijd_minuten                          als ingevuld
+               = reisduur_enkel_minuten × 2   bij heen en terug       anders
+               = reisduur_enkel_minuten       bij een enkele reis
+enkele_reizen  = 2 bij heen en terug, anders 1
+
+reistijd_dag   = Σ reistijd_rit ÷ 60                (alle ritten van die dag)
+eigen_tijd_dag = MIN(eigen_reistijd ; enkele_reizen_dag × eigen_reistijd ÷ 2 ; reistijd_dag)
+werktijd_dag   = MAX(0 ; reistijd_dag − eigen_tijd_dag)
+
+eigen_reistijd = instellingen.eigen_reistijd_uren_per_dag  (2,0)
 ```
 
-**Testgevallen:**
+Per enkele reis is de eerste **een uur** eigen tijd, met een maximum van **2 uur per dag**. Alle ritten tellen, ook naar een overleg of netwerkbijeenkomst. Een rit zonder bekende reistijd telt nergens mee, ook niet bij de eigen tijd; het tabblad Ritten meldt hem.
 
-| Enkele reis | Bruto retour | Declarabel |
-|---|---|---|
-| 0 min | 0,00 | **0,00** |
-| 35 min | 1,17 | **0,00** |
-| 60 min | 2,00 | **0,00** |
-| 61 min | 2,03 | **0,03** |
-| 90 min | 3,00 | **1,00** |
-| 135 min | 4,50 | **2,50** |
-| 160 min | 5,33 | **3,33** |
+**Testgevallen** (eigen reistijd 2,0):
 
-**Meerdere afspraken op één dag:** neem de **langste** enkele reis van die dag × 2, en trek daar één keer de eigen tijd van af. Toon in de UI een melding: *"Meerdere afspraken op deze dag. De reistijd is berekend op basis van de verste bestemming — pas handmatig aan als de werkelijke route langer was."*
+| Ritten op één dag | Reistijd | Eigen tijd | Werktijd |
+|---|---|---|---|
+| Vice versa, 2 × 35 min | 1,17 | 1,17 | **0,00** |
+| Vice versa, 2 × 60 min | 2,00 | 2,00 | **0,00** |
+| Vice versa, afwijkende reistijd 2 uur 2 min | 2,03 | 2,00 | **0,03** |
+| Vice versa, 2 × 90 min | 3,00 | 2,00 | **1,00** |
+| Vice versa, 2 × 135 min | 4,50 | 2,00 | **2,50** |
+| Vice versa, berekend 2 × 60 min, door files 2 uur 45 min | 2,75 | 2,00 | **0,75** |
+| Eén enkele reis van 90 min | 1,50 | 1,00 | **0,50** |
+| Drie enkele reizen: 30 + 90 + 30 min | 2,50 | 2,00 | **0,50** |
+| Twee ritten vice versa: 2 × 45 en 2 × 30 min | 2,50 | 2,00 | **0,50** |
 
-**Dagen zonder klantbezoek:** de 2-uursaftrek geldt niet. Reistijd naar bijvoorbeeld een netwerkbijeenkomst boek je als handmatige urenregel.
+**Reistijd en de telwijzen (5.4):** een rit is gereden, dus de reistijd telt in **gepland** en in **gerealiseerd**. Een geplande training in de toekomst heeft nog geen reistijd.
+
+**Eerder handmatig geboekte reistijd** (categorie `reistijd`) blijft meetellen. Nieuwe reistijd boekt de medewerker niet meer als urenregel, maar via een rit.
 
 ### 5.3 Uren per dag
 
@@ -432,7 +451,7 @@ declarabele_reistijd = MAX(0 ; brutoreistijd_dag − eigen_tijd)
 werkuren_dag = Σ uren_op_locatie (afspraken met datum = dag, status ≠ geannuleerd)
              + Σ uren_voorbereiding (afspraken met voorbereiding_datum = dag,
                                      status ≠ geannuleerd OF voorbereiding_gedaan = true)
-             + declarabele_reistijd_dag
+             + werktijd_dag uit de ritten (5.2)
              + Σ handmatige urenregels op die dag
 ```
 
@@ -440,7 +459,7 @@ Bij een afspraak 'anders' staan de zelf ingevulde uren in `uren_op_locatie`; ze 
 
 Waarschuw bij `werkuren_dag > 12` (Arbeidstijdenwet-grens voor volwassenen). Uren van Niet beschikbaar tellen daarbij niet mee.
 
-**Voorbeeld — één training in Zwolle (enkele reis 60 min):**
+**Voorbeeld — één training in Zwolle, rit vice versa (2 × 60 min):**
 ```
 op locatie          3,00
 voorbereiding       3,00
@@ -449,7 +468,7 @@ reistijd  2,00 − 2,00 = 0,00
 totaal              6,00 uur
 ```
 
-**Voorbeeld — één training in Utrecht (enkele reis 110 min):**
+**Voorbeeld — één training in Utrecht, rit vice versa (2 × 110 min):**
 ```
 op locatie          3,00
 voorbereiding       3,00
@@ -458,7 +477,7 @@ reistijd  3,67 − 2,00 = 1,67
 totaal              7,67 uur
 ```
 
-**Voorbeeld — observatie in Hengelo (enkele reis 15 min), voorbereiding dag ervoor:**
+**Voorbeeld — observatie in Hengelo, rit vice versa (2 × 15 min), voorbereiding dag ervoor:**
 ```
 Dag van de observatie:  3,50 op locatie + 0,00 reistijd = 3,50 uur
 Dag ervoor:             1,00 voorbereiding              = 1,00 uur
@@ -522,7 +541,7 @@ norm_eerste_jaar = persoonlijke_jaarnorm
 | Kolom | Wat telt mee |
 |---|---|
 | Gepland | Alle afspraken met status `gepland` of `voltooid`, ook toekomstige |
-| Gerealiseerd | Alleen status `voltooid`, plus alle handmatige urenregels |
+| Gerealiseerd | Alleen status `voltooid`, plus alle handmatige urenregels en de reistijd uit de ritten |
 
 Alleen **gerealiseerd** telt mee voor het saldo.
 
@@ -530,17 +549,19 @@ Dit geldt ook voor afspraken 'anders': Literatuurstudie en Overig tellen als ger
 
 ### 5.5 Statusregels
 
-| Status | Locatie-uren tellen | Voorbereidingsuren tellen | Reistijd telt |
-|---|---|---|---|
-| `gepland` | alleen in kolom "gepland" | alleen in kolom "gepland" | alleen in "gepland" |
-| `voltooid` | ja | ja | ja |
-| `geannuleerd` | nee | alleen als `voorbereiding_gedaan = true` | nee |
-| `verzet` | nee (telt bij de nieuwe afspraak) | alleen als `voorbereiding_gedaan = true` | nee |
+| Status | Locatie-uren tellen | Voorbereidingsuren tellen |
+|---|---|---|
+| `gepland` | alleen in kolom "gepland" | alleen in kolom "gepland" |
+| `voltooid` | ja | ja |
+| `geannuleerd` | nee | alleen als `voorbereiding_gedaan = true` |
+| `verzet` | nee (telt bij de nieuwe afspraak) | alleen als `voorbereiding_gedaan = true` |
+
+De status van een afspraak doet niets met de reistijd: die komt uit de ritten (5.2).
 
 ### 5.6 Afronding
 
 - Uren opslaan met 2 decimalen
-- **Automatisch berekende** reistijd afronden op `reistijd_afronding_minuten` (standaard 5) vóór opslag. Handmatig ingevoerde reistijd blijft exact zoals ingevoerd — daarom kent testgeval 61 minuten in 5.2 geen afronding.
+- **Automatisch berekende** reisduur van een rit afronden op `reistijd_afronding_minuten` (standaard 5) vóór opslag. Een afwijkende reistijd blijft exact zoals ingevoerd — daarom kent het testgeval van 2 uur 2 minuten in 5.2 geen afronding.
 - Weergave in de interface: uren met komma als decimaalteken (`6,50`), nooit met punt
 - Optioneel naast de decimale weergave ook `6u30` tonen
 
@@ -568,13 +589,13 @@ Het totaalbedrag is de som van de **afgeronde** bedragen per rit, niet het totaa
 
 Kilometers worden met één decimaal opgeslagen. Een afstand uit de routeplanner, in meters, wordt afgerond op 0,1 km.
 
-**De afstand automatisch bepalen**, zodra van en naar allebei gekozen zijn:
+**De afstand en de reisduur automatisch bepalen**, zodra van en naar allebei gekozen zijn. De reisduur is die van de snelste route zonder files, per enkele reis:
 
-1. Is de route eerder gereden, in een van beide richtingen, dan de `km_enkel` van de meest recente rit over die route. Hoofdletters en spaties tellen bij het vergelijken niet mee. Een afstand die de medewerker zelf heeft verbeterd, komt zo vanzelf terug.
+1. Is de route eerder gereden, in een van beide richtingen, dan de `km_enkel` en de `reisduur_enkel_minuten` van de meest recente rit over die route. Hoofdletters en spaties tellen bij het vergelijken niet mee. Een afstand die de medewerker zelf heeft verbeterd, komt zo vanzelf terug.
 2. Anders de snelste route met de auto volgens Google Maps (Routes API), van adres tot adres. Bij een school het adres uit `klanten`; bij alleen een plaatsnaam het midden van die plaats. Voor Thuis het volledige thuisadres, zonder naam: op uitdrukkelijk verzoek van de opdrachtgever een uitzondering op de privacyafspraak in CLAUDE.md, zodat de kilometers van deur tot deur kloppen.
-3. Liggen van en naar op hetzelfde punt, is er geen sleutel, of geeft Google geen antwoord, dan vult de medewerker de kilometers zelf in.
+3. Liggen van en naar op hetzelfde punt, is er geen sleutel, of geeft Google geen antwoord, dan vult de medewerker de kilometers en de reistijd zelf in.
 
-De medewerker kan de kilometers altijd aanpassen.
+De medewerker kan de kilometers altijd aanpassen, en de reistijd met **Afwijkende reistijd**.
 
 ---
 
@@ -602,13 +623,12 @@ Het formulier begint met de soort. Die bepaalt of de afspraak op school of ander
 | Dagdeel | Keuzerondjes | Ochtend / Middag / Hele dag / Anders |
 | Anders, namelijk | Tekst | Alleen zichtbaar bij dagdeel "Anders" |
 | Datum voorbereiding | Datumkiezer | Alleen bij op school. Standaard gelijk aan datum |
-| Reistijd enkele reis | Getal, minuten | Alleen bij op school. Voorgevuld vanuit de klant, aanpasbaar |
 | Afspraken met klant | Tekstvak | Alleen bij op school. Met privacywaarschuwing |
 | Notities/memo | Tekstvak | Met privacywaarschuwing |
 | Training voltooid | Vinkje | Zet status op `voltooid`. Bij anders heet dit "Gedaan"; ontbreekt bij een soort die niet meetelt |
 | **Gegevens opslaan** | Knop | |
 
-Onder het formulier een **live urenberekening** die meteen laat zien: `3,00 op locatie + 3,00 voorbereiding + 0,00 reistijd = 6,00 uur`.
+Onder het formulier een **live urenberekening** die meteen laat zien: `3,00 op locatie + 3,00 voorbereiding = 6,00 uur`, met de zin dat reistijd meetelt via het tabblad Ritten.
 
 **Rechts — permanente agenda:**
 FullCalendar met knoppen voor maand, week en dag. Kleuren per activiteitsoort. Klikken op een afspraak laadt deze in het formulier. Vandaag gemarkeerd. Schoolvakanties met een grijze achtergrond.
@@ -621,7 +641,7 @@ FullCalendar met knoppen voor maand, week en dag. Kleuren per activiteitsoort. K
 Chronologische tabel: datum · klant · plaats · soort · titel · uren · status.
 Filters op periode, klant, soort en status. Sorteerbaar. Exporteren naar Excel en PDF.
 
-Bij afspraken 'anders' blijven klant en plaats leeg. Bij een soort die niet meetelt (Niet beschikbaar) staat "telt niet mee" in plaats van uren. In de Excel-export staan zelf ingevulde uren in een eigen kolom, naast op locatie, voorbereiding en reistijd.
+Bij afspraken 'anders' blijven klant en plaats leeg. Bij een soort die niet meetelt (Niet beschikbaar) staat "telt niet mee" in plaats van uren. In de Excel-export staan zelf ingevulde uren in een eigen kolom, naast op locatie en voorbereiding. Reistijd staat niet per afspraak; die staat bij de ritten (6.7).
 
 ### 6.4 Klanten (`/klanten`)
 
@@ -672,16 +692,19 @@ Tweekolomsindeling, net als het hoofdscherm. Zo eenvoudig dat iedereen het kan i
 | Adres bij Van en bij Naar | Vier velden: Postcode, Huisnummer, Straat, Plaats | Onder de keuzelijst. Na postcode en huisnummer vult de app straat en plaats in uit de PDOK Locatieserver, zoals bij een webwinkel. Bij Thuis en bij een school staan de velden vast ingevuld; **Ander adres invullen** maakt ze leeg. Een adres over de grens kan met straat, huisnummer en plaats. In de rit komt één regel: "Schoolweg 5, 5678 CD Hengelo" |
 | Vice versa (heen en terug) | Vinkje | De kilometers tellen dubbel |
 | Kilometers (enkele reis) | Getal | Vult zich vanzelf (5.7), aanpasbaar |
+| Reistijd | Tekst, met een knop | Vult zich vanzelf (5.7): de reisduur zonder files, bij vice versa heen en terug samen. De knop **Afwijkende reistijd** opent twee velden, uren en minuten, voor de werkelijke reistijd van de hele rit, bijvoorbeeld bij files of een omleiding; geen verantwoording nodig. **Berekende reistijd gebruiken** zet hem terug. Is er geen berekende reisduur, dan staan de velden meteen open en is de reistijd verplicht |
 | **Rit opslaan** | Knop | |
 
-Onder het formulier staat meteen het totaal: `46,8 km · € 11,70`.
+Onder het formulier staat meteen het totaal: `46,8 km · € 11,70 · reistijd 1u30`.
 
-**Rechts:** de ritten van de gekozen maand, met pijltjes naar de vorige en volgende maand. Per rit: datum, doel, van – naar, km en bedrag, met wijzigen en verwijderen (na bevestiging). Onderaan het totaal aantal km en het totaalbedrag van de maand.
+**Rechts:** de ritten van de gekozen maand, met pijltjes naar de vorige en volgende maand. Per rit: datum, doel, van – naar, km, reistijd (met "aangepast" bij een afwijkende reistijd) en bedrag, met wijzigen en verwijderen (na bevestiging). Ook ritten uit het verleden zijn te wijzigen, dus ook hun reistijd. Onderaan het totaal aantal km, het totaalbedrag, de totale reistijd en het deel daarvan dat als werktijd telt (na de eigen tijd per dag, 5.2).
+
+**Ritten zonder reistijd**, bijvoorbeeld van vóór de reistijd bij de ritten kwam: het tabblad meldt hoeveel het er zijn, met de knop **Reistijden aanvullen**. Die bepaalt de reisduur van die ritten zoals bij een nieuwe rit (5.7). Wat niet lukt, vult de medewerker zelf in met **Afwijkende reistijd**.
 
 Twee knoppen voor de gekozen maand, op elk moment, ook halverwege de maand:
 
 - **Afdrukken** — het maandoverzicht op papier, met een kop: naam, maand, thuisadres, vergoeding en de datum van afdrukken. Via het afdrukvenster ook als PDF te bewaren.
-- **Excel downloaden** — één blad met een kop (naam, thuisadres, vergoeding, datum), de kolommen Datum · Doel van de rit · Van · Naar · Heen en terug · Km enkele reis · Km totaal · Vergoeding per km · Bedrag, en een totaalregel. Getallen als getal met Nederlandse opmaak; ingesteld op A4 liggend, één pagina breed.
+- **Excel downloaden** — één blad met een kop (naam, thuisadres, vergoeding, datum), de kolommen Datum · Doel van de rit · Van · Naar · Heen en terug · Km enkele reis · Km totaal · Vergoeding per km · Bedrag · Reistijd (uren) · Reistijd aangepast, en een totaalregel. Onder de totaalregel de reistijd van de maand: totaal, eigen tijd en wat als werktijd telt. Getallen als getal met Nederlandse opmaak; ingesteld op A4 liggend, één pagina breed.
 
 **Beheerder:** kiest bovenaan van welke medewerker hij de ritten bekijkt, afdrukt en downloadt. Wijzigen doet de medewerker zelf, net als bij de afspraken.
 
@@ -742,7 +765,7 @@ Rol bepalen via een `security definer`-functie die `rol` uit `profielen` haalt o
 
 Verplichte geautomatiseerde tests vóór fase 4 als afgerond geldt:
 
-1. Alle reistijd-testgevallen uit 5.2
+1. Alle reistijd-testgevallen uit 5.2, uit de ritten
 2. De vier dagvoorbeelden uit 5.3
 3. Alle werktijdfactor-combinaties uit 5.4
 4. De statusmatrix uit 5.5 — elk van de vier statussen, met en zonder `voorbereiding_gedaan`

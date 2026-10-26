@@ -43,11 +43,8 @@ const KLEUREN = [
   "#78716c",
 ];
 
-// Reistijd boven het uur hoort niet bij een soort afspraak; die volgt uit de
-// school of wordt los geboekt.
-const CATEGORIEEN_VOOR_SOORT = HANDMATIGE_CATEGORIEEN.filter(
-  (categorie) => categorie.waarde !== "reistijd",
-);
+// Reistijd staat hier niet tussen: die komt uit de ritten (SPEC.md 5.2).
+const CATEGORIEEN_VOOR_SOORT = HANDMATIGE_CATEGORIEEN;
 
 /**
  * Soorten afspraken inrichten (SPEC.md 4.5 en 6.6).

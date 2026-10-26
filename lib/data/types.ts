@@ -155,6 +155,17 @@ export interface Rit {
   kmEnkel: number;
   /** Euro per kilometer, vastgelegd bij het opslaan van de rit. */
   vergoedingPerKm: number;
+  /**
+   * Reisduur van de enkele reis volgens de routeplanner, zonder files, in
+   * minuten. `null` als die niet bekend is (SPEC.md 5.2).
+   */
+  reisduurEnkelMinuten: number | null;
+  /**
+   * De werkelijke reistijd van de hele rit (bij vice versa heen en terug
+   * samen), door de medewerker ingevuld bij files of een omleiding. `null`
+   * als de berekende reisduur geldt.
+   */
+  afwijkendeReistijdMinuten: number | null;
   aangemaaktOp: string;
 }
 

@@ -22,6 +22,8 @@ function rit(velden: Partial<Rit>): Rit {
     heenEnTerug: true,
     kmEnkel: 23.4,
     vergoedingPerKm: 0.25,
+    reisduurEnkelMinuten: 25,
+    afwijkendeReistijdMinuten: null,
     aangemaaktOp: "2026-10-05T08:00:00Z",
     ...velden,
   };
