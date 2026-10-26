@@ -9,6 +9,7 @@ import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { supabaseServer } from "@/lib/supabase/server";
 import { afrondOpDecimalen } from "@/lib/uren";
 import { factuurVinkjeSchema } from "@/lib/validatie/factuur";
+import { verstuurWeekmail } from "@/lib/weekmail/versturen";
 import { medewerkerSchema } from "@/lib/validatie/medewerker";
 import { kilometervergoedingSchema, leesDecimaal } from "@/lib/validatie/rit";
 
@@ -584,4 +585,44 @@ export async function zetFactuurVerstuurd(
 
   revalidatePath("/beheer");
   return { gelukt: true };
+}
+
+/**
+ * De weekmail meteen versturen, met de knop in Beheer (SPEC.md 6.6). Dezelfde
+ * mail als op maandagochtend: de trainingen die nog niet in een weekmail
+ * stonden. Die tellen daarna als gemeld.
+ */
+export async function verstuurWeekmailNu(): Promise<BeheerResultaat> {
+  const gegevens = await werkset();
+  if (gegevens.ik.rol !== "beheerder") {
+    return { gelukt: false, melding: "Alleen de beheerder kan de weekmail versturen." };
+  }
+
+  const uitkomst = await verstuurWeekmail(await supabaseServer(), {
+    automatisch: false,
+    nu: new Date(),
+    portaalAdres: await portaalAdres(),
+  });
+
+  switch (uitkomst.status) {
+    case "verstuurd":
+      revalidatePath("/beheer");
+      return {
+        gelukt: true,
+        melding:
+          uitkomst.aantal === 0
+            ? "Verstuurd. Er was niets nieuws; dat staat ook in de mail."
+            : `Verstuurd, met ${uitkomst.aantal === 1 ? "1 training" : `${uitkomst.aantal} trainingen`}.`,
+      };
+    case "al-verstuurd":
+      // Komt alleen voor bij de vaste maandagmail; voor de volledigheid.
+      return { gelukt: false, melding: "Deze week is de weekmail al verstuurd." };
+    case "niet-ingesteld":
+      return {
+        gelukt: false,
+        melding: `De weekmail is nog niet ingesteld. In Vercel ontbreekt: ${uitkomst.ontbreekt.join(", ")}. Zie PUBLICEREN.md, stap 4e.`,
+      };
+    case "fout":
+      return { gelukt: false, melding: uitkomst.melding };
+  }
 }

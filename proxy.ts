@@ -22,12 +22,17 @@ import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
 //
 // `/api/wekker` wordt dagelijks door Vercel aangeroepen, zonder inlog. Het
 // geeft geen gegevens terug; zie `app/api/wekker/route.ts`.
+//
+// `/api/weekmail` roept Vercel op maandagochtend aan, ook zonder inlog. Het
+// weigert elk verzoek zonder het geheim uit CRON_SECRET en geeft geen
+// gegevens terug; zie `app/api/weekmail/route.ts`.
 const OPENBARE_PADEN = [
   "/inloggen",
   "/wachtwoord-vergeten",
   "/instellen",
   "/diagnose",
   "/api/wekker",
+  "/api/weekmail",
 ];
 
 export async function proxy(verzoek: NextRequest) {

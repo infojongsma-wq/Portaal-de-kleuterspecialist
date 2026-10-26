@@ -7,6 +7,7 @@ import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
 import { RittenOverzicht } from "@/components/beheer/ritten-overzicht";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
 import { TrainingenGedaan } from "@/components/beheer/trainingen-gedaan";
+import { WeekmailBlok } from "@/components/beheer/weekmail-blok";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,7 +40,10 @@ import {
   verschuifMaand,
 } from "@/lib/ritten/maand";
 import { rittenmaand } from "@/lib/ritten/overzicht";
+import { aantalTrainingen, nogNietGemeld } from "@/lib/trainingen/gedaan";
 import { CATEGORIELABELS } from "@/lib/uren";
+import { mailInstellingen } from "@/lib/weekmail/smtp";
+import { tijdstipInNederland } from "@/lib/weekmail/tijd";
 
 export const metadata = { title: "Beheer · De Kleuterspecialist" };
 export const dynamic = "force-dynamic";
@@ -87,6 +91,9 @@ export default async function BeheerPagina({
     trainingsboekhouding(),
   ]);
   const trainingenGedaan = await haalGedaneTrainingen(boekhouding);
+  // Alleen het adres en welke instellingen ontbreken; het wachtwoord komt
+  // nooit in de pagina.
+  const mail = mailInstellingen();
 
   // De maand van het ritten-overzicht; standaard de huidige.
   const dezeRitmaand = maandVan(vandaagInNederland());
@@ -160,10 +167,28 @@ export default async function BeheerPagina({
               Per medewerker de trainingen en observaties op school die als
               gedaan zijn afgevinkt, de nieuwste bovenaan. Vink aan wanneer je
               de school de factuur hebt gestuurd. Alleen jij ziet dit vinkje.
+              Het label Nieuw betekent: nog niet in een weekmail.
             </p>
           </CardHeader>
           {boekhouding.beschikbaar ? (
-            <TrainingenGedaan lijst={trainingenGedaan} />
+            <>
+              <WeekmailBlok
+                ontvanger={mail.instellingen?.aan ?? null}
+                ontbreekt={mail.ontbreekt}
+                laatste={
+                  boekhouding.laatsteWeekmail
+                    ? {
+                        tijdstip: tijdstipInNederland(
+                          boekhouding.laatsteWeekmail.verzondenOp,
+                        ),
+                        aantal: boekhouding.laatsteWeekmail.aantalTrainingen,
+                      }
+                    : null
+                }
+                aantalNieuw={aantalTrainingen(nogNietGemeld(trainingenGedaan))}
+              />
+              <TrainingenGedaan lijst={trainingenGedaan} />
+            </>
           ) : (
             <p className="px-6 pb-6 text-sm text-muted-foreground">
               Nog één stap: het vinkje Factuur verstuurd staat nog niet in de

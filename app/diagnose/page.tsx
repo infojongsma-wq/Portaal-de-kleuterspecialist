@@ -11,6 +11,11 @@ import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { metersNaarKm } from "@/lib/uren";
 import { leesSupabaseOmgeving } from "@/lib/supabase/omgeving";
 import { supabaseServer } from "@/lib/supabase/server";
+import {
+  controleerMailserver,
+  mailFoutMelding,
+  mailInstellingen,
+} from "@/lib/weekmail/smtp";
 
 /**
  * Diagnosescherm: wat is er wél en niet in orde aan de koppeling met Supabase.
@@ -322,6 +327,11 @@ export default async function DiagnosePagina() {
         // zo blijkt of de Routes API aanstaat en de sleutel wordt geaccepteerd.
         // De sleutel zelf komt nooit op het scherm.
         uitkomsten.push(await googleControle());
+
+        // De weekmail: zijn de instellingen er, en kan het portaal inloggen
+        // op de mailserver? Er gaat geen mail. Wachtwoorden komen nooit op
+        // het scherm.
+        uitkomsten.push(await weekmailControle());
       }
     }
   }
@@ -372,6 +382,38 @@ export default async function DiagnosePagina() {
       </div>
     </main>
   );
+}
+
+/** Kan de weekmail op maandagochtend vertrekken? Verstuurt zelf niets. */
+async function weekmailControle(): Promise<Uitkomst> {
+  const naam = "Weekmail (maandag 08:00)";
+  const { instellingen, ontbreekt } = mailInstellingen();
+  const zonderGeheim = !process.env.CRON_SECRET?.trim();
+  const zonderSleutel = !process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const tekort = [
+    ...ontbreekt,
+    ...(zonderGeheim ? ["CRON_SECRET"] : []),
+    ...(zonderSleutel ? ["SUPABASE_SERVICE_ROLE_KEY"] : []),
+  ];
+
+  if (!instellingen || tekort.length > 0) {
+    return {
+      naam,
+      goed: false,
+      toelichting: `Nog in te stellen in Vercel: ${tekort.join(", ")}. Daarna opnieuw publiceren. Zie PUBLICEREN.md stap 4e.`,
+    };
+  }
+
+  try {
+    await controleerMailserver(instellingen);
+    return {
+      naam,
+      goed: true,
+      toelichting: `Alles staat erin en het portaal kan inloggen op ${instellingen.host}. De weekmail gaat naar ${instellingen.aan}.`,
+    };
+  } catch (fout) {
+    return { naam, goed: false, toelichting: mailFoutMelding(fout) };
+  }
 }
 
 /**

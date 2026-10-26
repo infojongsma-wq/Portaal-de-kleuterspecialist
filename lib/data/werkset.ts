@@ -59,9 +59,9 @@ function getalOfNull(waarde: unknown): number | null {
   return typeof waarde === "number" ? waarde : Number(waarde);
 }
 
-type Rij = Record<string, unknown>;
+export type Rij = Record<string, unknown>;
 
-function naarProfiel(rij: Rij): Profiel {
+export function naarProfiel(rij: Rij): Profiel {
   return {
     id: rij.id as string,
     voornaam: rij.voornaam as string,
@@ -90,7 +90,7 @@ function naarContract(rij: Rij): Contract {
   };
 }
 
-function naarKlant(rij: Rij): Klant {
+export function naarKlant(rij: Rij): Klant {
   return {
     id: rij.id as string,
     naam: rij.naam as string,
@@ -121,7 +121,7 @@ function naarContactpersoon(rij: Rij): Contactpersoon {
   };
 }
 
-function naarActiviteitsoort(rij: Rij): Activiteitsoort {
+export function naarActiviteitsoort(rij: Rij): Activiteitsoort {
   return {
     id: rij.id as string,
     naam: rij.naam as string,
@@ -138,7 +138,7 @@ function naarActiviteitsoort(rij: Rij): Activiteitsoort {
   };
 }
 
-function naarAfspraak(rij: Rij): Afspraak {
+export function naarAfspraak(rij: Rij): Afspraak {
   return {
     id: rij.id as string,
     klantId: (rij.klant_id as string) ?? null,

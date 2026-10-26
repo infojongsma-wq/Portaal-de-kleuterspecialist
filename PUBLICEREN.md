@@ -385,6 +385,52 @@ Alleen de beheerder kan erbij; een medewerker ziet het vinkje niet. In
 **Beheer** staat daarna bovenaan het blok **Trainingen gedaan**, met alles wat
 al als gedaan is afgevinkt. Opnieuw publiceren is niet nodig.
 
+### 2. De weekmail instellen (±10 minuten)
+
+Elke maandag om 08:00 stuurt het portaal een mail met de trainingen die die
+week als gedaan zijn afgevinkt, per medewerker. Die mail gaat via een mailbox
+van je eigen domein, bij Strato. Zo komt er geen andere partij bij die de namen
+van medewerkers en scholen ziet.
+
+1. **Maak bij Strato een aparte mailbox aan**, bijvoorbeeld
+   `portaal@dekleuterspecialist.nl`, met een eigen sterk wachtwoord. Dan staat
+   het wachtwoord van je eigen mailbox nergens anders dan bij Strato. Kan dat
+   niet, dan gaat het ook met een bestaande mailbox.
+2. **Vercel** → **Settings** → **Environment Variables**. Voeg deze toe, alle
+   drie de omgevingen aangevinkt:
+
+   | Naam | Waarde | Soort |
+   |---|---|---|
+   | `SMTP_HOST` | `smtp.strato.de` | gewoon |
+   | `SMTP_PORT` | `465` | gewoon |
+   | `SMTP_GEBRUIKER` | het volledige mailadres van die mailbox | gewoon |
+   | `SMTP_WACHTWOORD` | het wachtwoord van die mailbox | **Sensitive** |
+   | `WEEKMAIL_AAN` | het adres waar de weekmail heen moet, je eigen zakelijke adres | gewoon |
+   | `CRON_SECRET` | een lange willekeurige tekst, die je nergens hoeft te onthouden | **Sensitive** |
+
+   Zet er nooit `NEXT_PUBLIC_` voor. Typ het wachtwoord alleen in Vercel, niet
+   in een chat of mail. Staat `CRON_SECRET` er al (stap 4c), laat hem dan
+   staan zoals hij is.
+3. **Deployments** → bovenste regel → **⋯** → **Redeploy**, want een
+   variabele gaat pas mee bij een nieuwe bouw.
+
+**Controleren:** open `/diagnose`. Bij **Weekmail (maandag 08:00)** hoort een
+vinkje te staan: dan kan het portaal inloggen op de mailserver. Er gaat bij die
+controle geen mail. Daarna kun je in **Beheer** → **Trainingen gedaan** op
+**Weekmail nu versturen** klikken: de eerste mail bevat alles wat al is
+afgevinkt. Wat in een mail stond, krijgt geen label **Nieuw** meer en komt
+maandag niet nog een keer.
+
+**Tijdstip.** Vercel rekent in UTC en kent geen zomer- en wintertijd. Daarom
+staan er voor de weekmail twee tijden in `vercel.json`; het portaal verstuurt
+alleen bij de tijd die in Nederland 08:00 is. Op het gratis abonnement van
+Vercel komt een aanroep ergens binnen het uur, dus tussen 08:00 en 09:00. Bij
+**Settings** → **Cron Jobs** staat `/api/weekmail` twee keer; dat hoort zo.
+
+**Privacy.** In de mail staan de namen van de medewerkers en van de scholen,
+met datum en titel van de training. Geen notities, geen leerlinggegevens. Zet
+in je AVG-administratie dat dit per mail via Strato gaat.
+
 ---
 
 ## Stap 5 — Instellingen die nog kloppen moeten
@@ -458,6 +504,7 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Rittenregistratie (tabblad Ritten) | gebouwd — zie stap 4d, eerst de SQL draaien |
 | Trainingen gedaan met vinkje Factuur verstuurd (Beheer) | gebouwd — zie stap 4e, eerst de SQL draaien |
 | Agenda medewerkers (Beheer, knop rechtsboven) | gebouwd |
+| Weekmail op maandag 08:00 | gebouwd — zie stap 4e, eerst de mailbox instellen in Vercel |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | alleen de kilometervergoeding; de rest nog te lezen, niet te wijzigen |
