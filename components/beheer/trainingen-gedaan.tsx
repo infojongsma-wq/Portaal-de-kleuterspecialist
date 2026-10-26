@@ -198,8 +198,14 @@ function TrainingRegel({ training }: { training: GedaneTraining }) {
             onCheckedChange={(waarde) => wissel(waarde === true)}
             aria-label={`Factuur verstuurd aan ${training.school}, training van ${datum}`}
           />
+          {/* Altijd "Ja" naast het vakje: aanvinken betekent "ja, verstuurd". */}
           <label htmlFor={vinkId} className="text-sm whitespace-nowrap">
-            {verstuurdOp === null ? "Nee" : `Ja, ${formatteerDatum(verstuurdOp)}`}
+            Ja
+            {verstuurdOp !== null ? (
+              <span className="text-muted-foreground">
+                , {formatteerDatum(verstuurdOp)}
+              </span>
+            ) : null}
           </label>
         </div>
         {melding ? (
