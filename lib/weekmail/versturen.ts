@@ -47,7 +47,7 @@ function tabelOntbreekt(code: string | undefined): boolean {
 
 export async function verstuurWeekmail(
   supabase: SupabaseClient,
-  opties: { automatisch: boolean; nu: Date; portaalAdres: string | null },
+  opties: { automatisch: boolean; nu: Date },
 ): Promise<WeekmailUitkomst> {
   const { instellingen, ontbreekt } = mailInstellingen();
   if (!instellingen) return { status: "niet-ingesteld", ontbreekt };
@@ -127,7 +127,6 @@ export async function verstuurWeekmail(
         nieuw,
         week,
         eerste: boekhouding.laatsteWeekmail === null,
-        portaalAdres: opties.portaalAdres,
       }),
     );
   } catch (fout) {

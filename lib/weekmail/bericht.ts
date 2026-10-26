@@ -14,6 +14,10 @@ import { weeknummerUit } from "./tijd";
  *
  * Een pure functie, zodat de inhoud los te testen is. Er gaat een gewone
  * tekstversie en een opgemaakte versie mee; mailprogramma's kiezen zelf.
+ *
+ * Er staat bewust geen link in. De beheerder logt zelf in, en spamfilters
+ * weigeren mail met een link naar vercel.app; dat van Strato met "Sending of
+ * SPAM is not permitted! (B-URL)".
  */
 
 export interface WeekmailBericht {
@@ -29,11 +33,6 @@ export interface WeekmailInvoer {
   week: string;
   /** Is er nog nooit een weekmail verstuurd? */
   eerste: boolean;
-  /**
-   * Bijvoorbeeld `https://portaal.dekleuterspecialist.nl`, of `null`. Een
-   * adres op vercel.app komt niet in de mail; zie `adresVoorInMail`.
-   */
-  portaalAdres: string | null;
 }
 
 function datumTekst(training: GedaneTraining): string {
@@ -48,26 +47,6 @@ function trainingTekst(training: GedaneTraining): string {
 
 function aantalTekst(aantal: number): string {
   return aantal === 1 ? "1 training" : `${aantal} trainingen`;
-}
-
-/**
- * Het adres van het portaal voor de link in de mail, of `null`.
- *
- * Een adres op vercel.app gaat er niet in. Oplichters gebruiken zulke adressen
- * veel, en spamfilters weigeren daarom mail met zo'n link; dat van Strato met
- * "Sending of SPAM is not permitted! (B-URL)". Met een eigen domein voor het
- * portaal (SPEC.md 3) komt de link vanzelf terug.
- */
-export function adresVoorInMail(adres: string | null): string | null {
-  if (!adres) return null;
-  try {
-    const host = new URL(adres).hostname;
-    const geweigerd =
-      host === "localhost" || host === "vercel.app" || host.endsWith(".vercel.app");
-    return geweigerd ? null : adres;
-  } catch {
-    return null;
-  }
 }
 
 /** Tekens die in HTML iets betekenen, onschadelijk maken. */
@@ -96,8 +75,6 @@ export function weekmailBericht(invoer: WeekmailInvoer): WeekmailBericht {
         ? "Dit is de eerste weekmail. Hierin staan alle trainingen die tot nu toe als gedaan zijn afgevinkt."
         : "Sinds de vorige weekmail zijn deze trainingen als gedaan afgevinkt.";
 
-  const basis = adresVoorInMail(invoer.portaalAdres);
-  const link = basis ? `${basis.replace(/\/$/, "")}/beheer#trainingen` : null;
   const oproep =
     aantal > 0
       ? "Vink in het portaal bij Beheer → Trainingen gedaan aan wanneer je de factuur hebt verstuurd."
@@ -114,7 +91,6 @@ export function weekmailBericht(invoer: WeekmailInvoer): WeekmailBericht {
     }
   }
   if (oproep) tekstregels.push("", oproep);
-  if (link) tekstregels.push(link);
   tekstregels.push("", afsluiting);
 
   // Opgemaakt
@@ -143,7 +119,6 @@ export function weekmailBericht(invoer: WeekmailInvoer): WeekmailBericht {
     <p>Goedemorgen,</p>
     <p>${veiligeHtml(inleiding)}</p>${blokken}
     ${oproep ? `<p style="margin-top:20px">${veiligeHtml(oproep)}</p>` : ""}
-    ${link ? `<p><a href="${veiligeHtml(link)}" style="color:#026666">Naar Trainingen gedaan in het portaal</a></p>` : ""}
     <p style="margin-top:24px;color:#6b7280;font-size:12px">${veiligeHtml(afsluiting)}</p>
   </body>
 </html>`;

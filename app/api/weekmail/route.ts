@@ -47,16 +47,7 @@ export async function GET(verzoek: Request) {
     );
   }
 
-  // Het vaste adres van het portaal, voor de link in de mail. Vercel zet deze
-  // variabele zelf; zonder valt het terug op het adres van deze aanroep.
-  const productie = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  const portaalAdres = productie ? `https://${productie}` : new URL(verzoek.url).origin;
-
-  const uitkomst = await verstuurWeekmail(supabase, {
-    automatisch: true,
-    nu,
-    portaalAdres,
-  });
+  const uitkomst = await verstuurWeekmail(supabase, { automatisch: true, nu });
 
   switch (uitkomst.status) {
     case "verstuurd":

@@ -143,7 +143,7 @@ function startgegevens(): Record<string, Tabel> {
 }
 
 const MAANDAG = new Date("2026-10-26T07:05:00Z");
-const opties = { automatisch: true, nu: MAANDAG, portaalAdres: null };
+const opties = { automatisch: true, nu: MAANDAG };
 
 describe("de weekmail versturen (SPEC.md 6.6)", () => {
   beforeEach(() => {

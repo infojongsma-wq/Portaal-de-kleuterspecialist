@@ -427,11 +427,9 @@ alleen bij de tijd die in Nederland 08:00 is. Op het gratis abonnement van
 Vercel komt een aanroep ergens binnen het uur, dus tussen 08:00 en 09:00. Bij
 **Settings** → **Cron Jobs** staat `/api/weekmail` twee keer; dat hoort zo.
 
-**Geen link in de mail, zolang het portaal op vercel.app staat.** Het
-spamfilter van Strato weigert mail met een link naar vercel.app ("Sending of
-SPAM is not permitted! (B-URL)"). Daarom staat er alleen in de mail waar je
-moet kijken. Zodra het portaal een eigen adres heeft (stap 6), komt de link er
-vanzelf in.
+**Geen link in de mail.** Je logt zelf in. Bovendien weigert het spamfilter
+van Strato mail met een link naar vercel.app ("Sending of SPAM is not
+permitted! (B-URL)").
 
 **Privacy.** In de mail staan de namen van de medewerkers en van de scholen,
 met datum en titel van de training. Geen notities, geen leerlinggegevens. Zet

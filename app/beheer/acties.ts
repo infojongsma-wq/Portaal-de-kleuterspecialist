@@ -601,7 +601,6 @@ export async function verstuurWeekmailNu(): Promise<BeheerResultaat> {
   const uitkomst = await verstuurWeekmail(await supabaseServer(), {
     automatisch: false,
     nu: new Date(),
-    portaalAdres: await portaalAdres(),
   });
 
   switch (uitkomst.status) {
