@@ -437,6 +437,41 @@ in je AVG-administratie dat dit per mail via Strato gaat.
 
 ---
 
+## Stap 4f — Reistijd uit de ritten (jij, ±5 minuten)
+
+De reistijd telt niet meer mee via de afspraken, maar via de ritten. Bij elke
+rit rekent het portaal de reistijd zonder files uit; met **Afwijkende
+reistijd** vult de medewerker de werkelijke reistijd in. Per dag gaat er een
+uur eigen tijd per enkele reis af, met hooguit 2 uur per dag (SPEC.md 5.2).
+
+### 1. De SQL (±2 minuten)
+
+1. Open `supabase/migrations/20261027090000_reistijd_via_ritten.sql` op
+   GitHub en kopieer het met **Copy raw file**.
+2. Supabase → **SQL Editor** → **+ New query**. Plak het in dat lege venster.
+3. Klik op **Run**. Onderin hoort `Success. No rows returned` te staan. Twee
+   keer draaien kan geen kwaad.
+
+Zonder deze stap kan het portaal geen rit opslaan; het meldt dan dat deze stap
+nog moet.
+
+### 2. De reistijd van eerdere ritten aanvullen (±1 minuut)
+
+Ritten van vóór deze wijziging hebben nog geen reistijd, en tellen daardoor nog
+niet mee voor de uren. Op het tabblad **Ritten** staat dan bovenaan hoeveel het
+er zijn, met de knop **Reistijden aanvullen**. Die rekent de reistijd uit met
+Google Maps, zoals bij een nieuwe rit. Wat niet lukt, vult de medewerker zelf
+in: klik op de rit en kies **Afwijkende reistijd**.
+
+De medewerker doet dit het makkelijkst zelf. Als beheerder kan het ook: kies
+bovenaan de medewerker en klik op dezelfde knop.
+
+**Let op:** dit geldt met terugwerkende kracht. Een afspraak telt geen reistijd
+meer; alleen een rit doet dat. Ontbreekt er een rit, dan ontbreekt ook die
+reistijd in de uren.
+
+---
+
 ## Stap 5 — Instellingen die nog kloppen moeten
 
 Voordat je echte uren gaat bijhouden:
@@ -509,6 +544,7 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Trainingen gedaan met vinkje Factuur verstuurd (Beheer) | gebouwd — zie stap 4e, eerst de SQL draaien |
 | Agenda medewerkers (Beheer, knop rechtsboven) | gebouwd |
 | Weekmail op maandag 08:00 | gebouwd — zie stap 4e, eerst de mailbox instellen in Vercel |
+| Reistijd uit de ritten, met Afwijkende reistijd | gebouwd — zie stap 4f, eerst de SQL draaien |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | alleen de kilometervergoeding; de rest nog te lezen, niet te wijzigen |
