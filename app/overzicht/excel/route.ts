@@ -26,7 +26,7 @@ export async function GET(verzoek: Request) {
   );
   const filters = leesFilters(parameters);
   const medewerker = await huidigeMedewerker();
-  const { afspraken, instellingen } = await haalOverzicht(
+  const { afspraken } = await haalOverzicht(
     medewerker.id,
     filters,
   );

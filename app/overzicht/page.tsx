@@ -60,7 +60,7 @@ export default async function OverzichtPagina({
     haalActiviteitsoorten(),
     haalOverzicht(medewerker.id, filters),
   ]);
-  const { afspraken, instellingen, totaalUren: totaal } = overzicht;
+  const { afspraken, totaalUren: totaal } = overzicht;
 
   return (
     <Pagina
