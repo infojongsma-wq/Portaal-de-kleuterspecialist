@@ -17,29 +17,39 @@ import {
 } from "@/components/ui/table";
 import { formatteerDatum } from "@/lib/formatteer";
 import { vandaagInNederland } from "@/lib/ritten/maand";
-import type {
-  GedaneTraining,
-  TrainingenVanMedewerker,
+import {
+  komtInWeekmail,
+  type GedaneTraining,
+  type TrainingenVanMedewerker,
 } from "@/lib/trainingen/gedaan";
 
-type Filter = "alles" | "zonder-factuur";
+type Tabblad = "te-factureren" | "gefactureerd";
+
+function hoortInTabblad(training: GedaneTraining, tabblad: Tabblad): boolean {
+  return tabblad === "gefactureerd"
+    ? training.factuurVerstuurdOp !== null
+    : training.factuurVerstuurdOp === null;
+}
 
 /**
  * Trainingen gedaan in Beheer (SPEC.md 6.6): per medewerker de trainingen op
- * school die als gedaan zijn afgevinkt, met het vinkje "Factuur verstuurd".
+ * school die als gedaan zijn afgevinkt, in twee tabbladen. Met het vinkje
+ * "Factuur verstuurd" gaat een training van "Nog te factureren" naar
+ * "Factuur verstuurd"; uitvinken zet hem terug.
  */
 export function TrainingenGedaan({
   lijst,
 }: {
   lijst: TrainingenVanMedewerker[];
 }) {
-  const [filter, setFilter] = React.useState<Filter>("alles");
+  const [tabblad, setTabblad] = React.useState<Tabblad>("te-factureren");
 
-  const zonderFactuur = lijst.reduce(
-    (som, medewerker) =>
-      som + medewerker.trainingen.filter((t) => !t.factuurVerstuurdOp).length,
-    0,
-  );
+  const aantal = (soort: Tabblad) =>
+    lijst.reduce(
+      (som, medewerker) =>
+        som + medewerker.trainingen.filter((t) => hoortInTabblad(t, soort)).length,
+      0,
+    );
 
   if (lijst.length === 0) {
     return (
@@ -49,60 +59,80 @@ export function TrainingenGedaan({
     );
   }
 
+  // In "Factuur verstuurd" alleen wie daar iets heeft staan.
+  const zichtbareMedewerkers =
+    tabblad === "gefactureerd"
+      ? lijst.filter((medewerker) =>
+          medewerker.trainingen.some((t) => hoortInTabblad(t, "gefactureerd")),
+        )
+      : lijst;
+
   return (
     <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-2 border-b px-6 pb-4">
-        <Button
-          type="button"
-          size="sm"
-          variant={filter === "alles" ? "default" : "outline"}
-          aria-pressed={filter === "alles"}
-          onClick={() => setFilter("alles")}
-        >
-          Alles
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={filter === "zonder-factuur" ? "default" : "outline"}
-          aria-pressed={filter === "zonder-factuur"}
-          onClick={() => setFilter("zonder-factuur")}
-        >
-          Nog geen factuur ({zonderFactuur})
-        </Button>
+      <div
+        role="tablist"
+        aria-label="Trainingen gedaan"
+        className="flex flex-wrap items-center gap-2 border-b px-6 pb-4"
+      >
+        {(
+          [
+            ["te-factureren", "Nog te factureren"],
+            ["gefactureerd", "Factuur verstuurd"],
+          ] as const
+        ).map(([soort, label]) => (
+          <Button
+            key={soort}
+            type="button"
+            size="sm"
+            role="tab"
+            aria-selected={tabblad === soort}
+            variant={tabblad === soort ? "default" : "outline"}
+            onClick={() => setTabblad(soort)}
+          >
+            {label} ({aantal(soort)})
+          </Button>
+        ))}
       </div>
 
-      {lijst.map((medewerker) => (
-        <MedewerkerBlok key={medewerker.id} medewerker={medewerker} filter={filter} />
-      ))}
+      {zichtbareMedewerkers.length === 0 ? (
+        <p className="px-6 py-4 text-sm text-muted-foreground">
+          Nog geen trainingen waarvan de factuur is verstuurd.
+        </p>
+      ) : (
+        zichtbareMedewerkers.map((medewerker) => (
+          <MedewerkerBlok
+            key={medewerker.id}
+            medewerker={medewerker}
+            tabblad={tabblad}
+          />
+        ))
+      )}
     </div>
   );
 }
 
 function MedewerkerBlok({
   medewerker,
-  filter,
+  tabblad,
 }: {
   medewerker: TrainingenVanMedewerker;
-  filter: Filter;
+  tabblad: Tabblad;
 }) {
   const totaal = medewerker.trainingen.length;
-  const zonderFactuur = medewerker.trainingen.filter(
-    (training) => !training.factuurVerstuurdOp,
-  ).length;
-  const zichtbaar =
-    filter === "alles"
-      ? medewerker.trainingen
-      : medewerker.trainingen.filter((training) => !training.factuurVerstuurdOp);
+  const zichtbaar = medewerker.trainingen.filter((training) =>
+    hoortInTabblad(training, tabblad),
+  );
 
   return (
     <section className="border-b last:border-b-0">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-6 pt-4 pb-2">
         <h3 className="font-semibold">{medewerker.naam}</h3>
         <p className="text-sm text-muted-foreground">
-          {totaal === 0
-            ? "Nog niets afgevinkt"
-            : `${totaal} gedaan · ${zonderFactuur} zonder factuur`}
+          {tabblad === "gefactureerd"
+            ? `${zichtbaar.length} gefactureerd`
+            : totaal === 0
+              ? "Nog niets afgevinkt"
+              : `${zichtbaar.length} nog te factureren`}
         </p>
       </div>
 
@@ -110,7 +140,7 @@ function MedewerkerBlok({
         <p className="px-6 pb-4 text-sm text-muted-foreground">
           {totaal === 0
             ? "Zodra een training als gedaan is afgevinkt, staat hij hier."
-            : "Bij alles is de factuur verstuurd."}
+            : "Alles is gefactureerd."}
         </p>
       ) : (
         <Table>
@@ -181,8 +211,8 @@ function TrainingRegel({ training }: { training: GedaneTraining }) {
       <TableCell className="align-top">
         <div className="flex flex-wrap items-center gap-2">
           <span>{training.titel}</span>
-          {!training.gemeld ? (
-            <Badge variant="secondary" title="Staat nog niet in een weekmail">
+          {komtInWeekmail(training) ? (
+            <Badge variant="secondary" title="Komt in de volgende weekmail">
               Nieuw
             </Badge>
           ) : null}

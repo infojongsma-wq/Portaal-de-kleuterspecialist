@@ -67,7 +67,8 @@ export function WeekmailBlok({
           {ontvanger ? (
             <p className="text-muted-foreground">
               Elke maandag om 08:00 naar {ontvanger}, met de trainingen die
-              sinds de vorige weekmail als gedaan zijn afgevinkt.
+              sinds de vorige weekmail als gedaan zijn afgevinkt en waarvan de
+              factuur nog niet is verstuurd.
             </p>
           ) : (
             <p className="text-muted-foreground">

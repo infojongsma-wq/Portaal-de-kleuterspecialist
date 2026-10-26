@@ -104,16 +104,25 @@ export function gedaneTrainingen(
 }
 
 /**
- * Alleen wat nog niet in een weekmail stond. Medewerkers zonder iets nieuws
- * vallen weg.
+ * Hoort deze training in de volgende weekmail? Alleen als hij er nog niet in
+ * stond, en de factuur nog niet is verstuurd: wat al gefactureerd is, hoeft de
+ * beheerder niet meer te zien.
  */
-export function nogNietGemeld(
+export function komtInWeekmail(training: GedaneTraining): boolean {
+  return !training.gemeld && !training.factuurVerstuurdOp;
+}
+
+/**
+ * Wat in de volgende weekmail komt; zie `komtInWeekmail`. Medewerkers zonder
+ * iets nieuws vallen weg.
+ */
+export function voorDeWeekmail(
   lijst: TrainingenVanMedewerker[],
 ): TrainingenVanMedewerker[] {
   return lijst
     .map((medewerker) => ({
       ...medewerker,
-      trainingen: medewerker.trainingen.filter((training) => !training.gemeld),
+      trainingen: medewerker.trainingen.filter(komtInWeekmail),
     }))
     .filter((medewerker) => medewerker.trainingen.length > 0);
 }

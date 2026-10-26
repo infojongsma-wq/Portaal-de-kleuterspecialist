@@ -4,7 +4,7 @@ import type { Activiteitsoort, Afspraak, Klant } from "@/lib/data/types";
 import {
   aantalTrainingen,
   gedaneTrainingen,
-  nogNietGemeld,
+  voorDeWeekmail,
   type TrainingenInvoer,
 } from "../gedaan";
 
@@ -195,9 +195,20 @@ describe("trainingen gedaan in Beheer (SPEC.md 6.6)", () => {
         gemeld: new Set(["2", "3"]),
       }),
     );
-    const nieuw = nogNietGemeld(lijst);
+    const nieuw = voorDeWeekmail(lijst);
     expect(nieuw.map((regel) => regel.naam)).toEqual(["Proef Aalders"]);
     expect(nieuw[0].trainingen.map((t) => t.afspraakId)).toEqual(["1"]);
     expect(aantalTrainingen(nieuw)).toBe(1);
+  });
+
+  it("de weekmail slaat trainingen over waarvan de factuur al is verstuurd", () => {
+    const lijst = gedaneTrainingen(
+      invoer({
+        afspraken: [afspraak({ id: "1" }), afspraak({ id: "2" })],
+        facturen: new Map([["2", "2026-10-26"]]),
+      }),
+    );
+    const nieuw = voorDeWeekmail(lijst);
+    expect(nieuw[0].trainingen.map((t) => t.afspraakId)).toEqual(["1"]);
   });
 });

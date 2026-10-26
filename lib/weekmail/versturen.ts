@@ -11,7 +11,7 @@ import {
 import {
   aantalTrainingen,
   gedaneTrainingen,
-  nogNietGemeld,
+  voorDeWeekmail,
 } from "@/lib/trainingen/gedaan";
 import { weekmailBericht } from "./bericht";
 import { mailFoutMelding, mailInstellingen, verstuurMail } from "./smtp";
@@ -93,7 +93,7 @@ export async function verstuurWeekmail(
     facturen: boekhouding.facturen,
     gemeld: boekhouding.gemeld,
   });
-  const nieuw = nogNietGemeld(lijst);
+  const nieuw = voorDeWeekmail(lijst);
   const aantal = aantalTrainingen(nieuw);
   const week = weekInNederland(opties.nu);
 

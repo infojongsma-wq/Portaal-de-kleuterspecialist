@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays, Lock } from "lucide-react";
+import { CalendarDays, ChevronDown, Lock } from "lucide-react";
 
 import { Pagina } from "@/components/pagina";
 import { KilometervergoedingInstelling } from "@/components/beheer/kilometervergoeding-instelling";
@@ -40,7 +40,7 @@ import {
   verschuifMaand,
 } from "@/lib/ritten/maand";
 import { rittenmaand } from "@/lib/ritten/overzicht";
-import { aantalTrainingen, nogNietGemeld } from "@/lib/trainingen/gedaan";
+import { aantalTrainingen, voorDeWeekmail } from "@/lib/trainingen/gedaan";
 import { CATEGORIELABELS } from "@/lib/uren";
 import { mailInstellingen } from "@/lib/weekmail/smtp";
 import { tijdstipInNederland } from "@/lib/weekmail/tijd";
@@ -94,6 +94,13 @@ export default async function BeheerPagina({
   // Alleen het adres en welke instellingen ontbreken; het wachtwoord komt
   // nooit in de pagina.
   const mail = mailInstellingen();
+  const aantalVoorWeekmail = aantalTrainingen(voorDeWeekmail(trainingenGedaan));
+  const aantalTeFactureren = trainingenGedaan.reduce(
+    (som, medewerker) =>
+      som +
+      medewerker.trainingen.filter((training) => !training.factuurVerstuurdOp).length,
+    0,
+  );
 
   // De maand van het ritten-overzicht; standaard de huidige.
   const dezeRitmaand = maandVan(vandaagInNederland());
@@ -159,42 +166,62 @@ export default async function BeheerPagina({
       }
     >
       <div className="grid grid-cols-1 gap-5">
-        {/* Trainingen gedaan */}
+        {/* Trainingen gedaan: in- en uit te klappen, standaard dicht */}
         <Card id="trainingen" className="scroll-mt-20 p-0">
-          <CardHeader>
-            <CardTitle>Trainingen gedaan</CardTitle>
-            <p className="text-sm text-muted-foreground">
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-xl p-5 hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+              <div className="grid gap-1">
+                <CardTitle>Trainingen gedaan</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {boekhouding.beschikbaar
+                    ? `${aantalTeFactureren} nog te factureren · ${aantalVoorWeekmail} nieuw voor de weekmail`
+                    : "Nog één stap nodig; klik om te openen."}
+                </p>
+              </div>
+              <span className="flex shrink-0 items-center gap-1 text-sm text-muted-foreground">
+                <span className="group-open:hidden">Openen</span>
+                <span className="hidden group-open:inline">Sluiten</span>
+                <ChevronDown
+                  aria-hidden
+                  className="size-5 transition-transform group-open:rotate-180"
+                />
+              </span>
+            </summary>
+
+            <p className="px-6 pb-4 text-sm text-muted-foreground">
               Per medewerker de trainingen en observaties op school die als
-              gedaan zijn afgevinkt, de nieuwste bovenaan. Vink aan wanneer je
-              de school de factuur hebt gestuurd. Alleen jij ziet dit vinkje.
-              Het label Nieuw betekent: nog niet in een weekmail.
+              gedaan zijn afgevinkt, de nieuwste bovenaan. Vink Ja aan wanneer
+              je de school de factuur hebt gestuurd; de training gaat dan naar
+              het tabblad Factuur verstuurd en komt niet meer in de weekmail.
+              Alleen jij ziet dit vinkje. Het label Nieuw betekent: komt in de
+              volgende weekmail.
             </p>
-          </CardHeader>
-          {boekhouding.beschikbaar ? (
-            <>
-              <WeekmailBlok
-                ontvanger={mail.instellingen?.aan ?? null}
-                ontbreekt={mail.ontbreekt}
-                laatste={
-                  boekhouding.laatsteWeekmail
-                    ? {
-                        tijdstip: tijdstipInNederland(
-                          boekhouding.laatsteWeekmail.verzondenOp,
-                        ),
-                        aantal: boekhouding.laatsteWeekmail.aantalTrainingen,
-                      }
-                    : null
-                }
-                aantalNieuw={aantalTrainingen(nogNietGemeld(trainingenGedaan))}
-              />
-              <TrainingenGedaan lijst={trainingenGedaan} />
-            </>
-          ) : (
-            <p className="px-6 pb-6 text-sm text-muted-foreground">
-              Nog één stap: het vinkje Factuur verstuurd staat nog niet in de
-              database. Zie PUBLICEREN.md, stap 4e.
-            </p>
-          )}
+            {boekhouding.beschikbaar ? (
+              <>
+                <WeekmailBlok
+                  ontvanger={mail.instellingen?.aan ?? null}
+                  ontbreekt={mail.ontbreekt}
+                  laatste={
+                    boekhouding.laatsteWeekmail
+                      ? {
+                          tijdstip: tijdstipInNederland(
+                            boekhouding.laatsteWeekmail.verzondenOp,
+                          ),
+                          aantal: boekhouding.laatsteWeekmail.aantalTrainingen,
+                        }
+                      : null
+                  }
+                  aantalNieuw={aantalVoorWeekmail}
+                />
+                <TrainingenGedaan lijst={trainingenGedaan} />
+              </>
+            ) : (
+              <p className="px-6 pb-6 text-sm text-muted-foreground">
+                Nog één stap: het vinkje Factuur verstuurd staat nog niet in de
+                database. Zie PUBLICEREN.md, stap 4e.
+              </p>
+            )}
+          </details>
         </Card>
 
         {/* Urenverantwoording per medewerker */}
