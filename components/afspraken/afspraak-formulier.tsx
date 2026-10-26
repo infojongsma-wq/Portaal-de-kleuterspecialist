@@ -114,8 +114,9 @@ function naarFormulier(afspraak: Afspraak): AfspraakFormulier {
  * Afspraakformulier, linkerkolom van het hoofdscherm.
  *
  * Bij een training of observatie vult de medewerker alleen in wát er gebeurt
- * en wanneer. De uren op locatie, de voorbereidingsuren en de reistijd worden
- * serverside afgeleid uit de soort en de school; ze staan hier bewust niet.
+ * en wanneer. De uren op locatie en de voorbereidingsuren worden serverside
+ * afgeleid uit de soort; ze staan hier bewust niet. Reistijd hoort niet bij
+ * een afspraak maar bij een rit (SPEC.md 5.2).
  *
  * Bij Literatuurstudie, Overig en Niet beschikbaar is er geen school, en vult
  * de medewerker het aantal uren zelf in.

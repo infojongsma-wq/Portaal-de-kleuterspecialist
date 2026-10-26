@@ -6,8 +6,7 @@ import { parseISO, subDays } from "date-fns";
 import { formatteerDatum, naarIsoDatum } from "@/lib/formatteer";
 import { werkset } from "@/lib/data/werkset";
 import { supabaseServer } from "@/lib/supabase/server";
-import type { Activiteitsoort, Klant } from "@/lib/data/types";
-import { afrondAutomatischeReistijdMinuten } from "@/lib/uren";
+import type { Activiteitsoort } from "@/lib/data/types";
 import {
   activiteitsoortSchema,
   afgesprokenTrainingenSchema,
@@ -25,9 +24,10 @@ import {
  * Security bepaalt wat er werkelijk mag. De controles hieronder zijn er voor
  * begrijpelijke meldingen, niet als beveiliging — die zit in Postgres.
  *
- * De uren en de reistijd van een training of observatie worden hier bepaald,
- * uit de activiteitsoort en de school. Ze komen niet uit het formulier, want de
- * medewerker ziet die velden niet. Alleen bij soorten met zelf ingevulde uren,
+ * De uren van een training of observatie worden hier bepaald, uit de
+ * activiteitsoort. Ze komen niet uit het formulier, want de medewerker ziet
+ * die velden niet. Reistijd hoort niet bij een afspraak; die komt uit de
+ * ritten (SPEC.md 5.2). Alleen bij soorten met zelf ingevulde uren,
  * zoals Literatuurstudie, komt het aantal uren wel uit het formulier.
  *
  * Automatische urenregels worden niet weggeschreven: die zijn volledig af te
@@ -68,26 +68,16 @@ function fout(melding: string, oorzaak?: { message: string }): ActieResultaat {
 }
 
 /**
- * Uren en reistijd afleiden. De reistijd wordt afgerond op hele stappen, want
- * hij komt altijd automatisch uit de klantgegevens (SPEC.md 5.6).
+ * De uren van een training of observatie, uit de soort. De reistijdkolommen
+ * blijven leeg: reistijd komt uit de ritten (SPEC.md 4.6 en 5.2).
  */
-function afgeleideGegevens(
-  soort: Activiteitsoort,
-  klant: Klant,
-  afrondingMinuten: number,
-) {
+function afgeleideGegevens(soort: Activiteitsoort) {
   return {
     uren_op_locatie: soort.urenOpLocatie,
     uren_voorbereiding: soort.urenVoorbereiding,
-    reistijd_enkel_minuten:
-      klant.reistijdEnkelMinuten === null
-        ? null
-        : afrondAutomatischeReistijdMinuten(
-            klant.reistijdEnkelMinuten,
-            afrondingMinuten,
-          ),
-    reisafstand_enkel_km: klant.reisafstandEnkelKm,
-    reisgegevens_bron: "automatisch" as const,
+    reistijd_enkel_minuten: null,
+    reisafstand_enkel_km: null,
+    reisgegevens_bron: null,
   };
 }
 
@@ -148,18 +138,14 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
   // Wat geen werk is, zoals "niet beschikbaar", valt ook niet af te vinken.
   const voltooid = waarden.voltooid && soort.teltAlsWerktijd;
 
-  const urenEnReistijd: {
+  const uren: {
     uren_op_locatie: number;
     uren_voorbereiding: number;
-    reistijd_enkel_minuten: number | null;
-    reisafstand_enkel_km: number | null;
-    reisgegevens_bron: "automatisch" | null;
+    reistijd_enkel_minuten: null;
+    reisafstand_enkel_km: null;
+    reisgegevens_bron: null;
   } = klant
-    ? afgeleideGegevens(
-        soort,
-        klant,
-        gegevens.instellingen.reistijdAfrondingMinuten,
-      )
+    ? afgeleideGegevens(soort)
     : {
         // De zelf ingevulde uren staan in de kolom voor uren op locatie. De
         // soort bepaalt dat ze als eigen uren tellen, onder de eigen categorie.
@@ -184,7 +170,7 @@ export async function bewaarAfspraak(invoer: unknown): Promise<ActieResultaat> {
     starttijd: waarden.starttijd || null,
     eindtijd: waarden.eindtijd || null,
     voorbereiding_datum: voorbereidingDatum,
-    ...urenEnReistijd,
+    ...uren,
     status: voltooid
       ? "voltooid"
       : // Een eerder geannuleerde of verzette afspraak blijft dat.
@@ -271,11 +257,7 @@ export async function voegAfgesprokenTrainingenToe(
         starttijd: null,
         eindtijd: null,
         voorbereiding_datum: null,
-        ...afgeleideGegevens(
-          soort,
-          klant,
-          gegevens.instellingen.reistijdAfrondingMinuten,
-        ),
+        ...afgeleideGegevens(soort),
         status: "gepland" as const,
         voltooid_op: null,
         voorbereiding_gedaan: false,

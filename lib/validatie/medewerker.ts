@@ -3,8 +3,8 @@ import { z } from "zod";
 /**
  * Wat er van een medewerkersprofiel wordt vastgelegd (SPEC.md 4.1 en 6.6).
  *
- * De standplaats staat erbij omdat de eigen reistijd per dag daarvandaan
- * wordt gerekend (SPEC.md 5.6). Rol, dienstverband en e-mailadres kunnen
+ * De standplaats is het thuisadres: daarvandaan rekent de app de afstand en
+ * de reistijd van een rit vanaf Thuis (SPEC.md 5.7). Rol, dienstverband en e-mailadres kunnen
  * alleen door een beheerder worden gewijzigd; dat bewaakt de database zelf met
  * een trigger, niet dit schema.
  */

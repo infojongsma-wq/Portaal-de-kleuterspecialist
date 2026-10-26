@@ -297,8 +297,7 @@ function SoortFormulier({
           </Label>
         </div>
         <p className="pl-6 text-xs text-muted-foreground">
-          Zoals bij Literatuurstudie: geen school, geen voorbereiding en geen
-          reistijd.
+          Zoals bij Literatuurstudie: geen school en geen voorbereiding.
         </p>
       </div>
 

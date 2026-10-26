@@ -440,7 +440,7 @@ export function MedewerkersBeheer({
 
               <fieldset className="grid gap-3 rounded-md border p-3 sm:grid-cols-3">
                 <legend className="px-1 text-xs text-muted-foreground">
-                  Standplaats — vanaf hier wordt de eigen reistijd gerekend
+                  Standplaats — het thuisadres, vanaf hier rekent de app de ritten
                 </legend>
 
                 <Veld

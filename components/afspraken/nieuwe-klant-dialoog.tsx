@@ -102,7 +102,8 @@ export function NieuweKlantDialoog({
         <DialogHeader>
           <DialogTitle>Nieuwe school</DialogTitle>
           <DialogDescription>
-            De reistijd is de enkele reis vanaf de standplaats in Enschede.
+            Reistijd en afstand zijn ter informatie, enkele reis vanaf de
+            standplaats. Voor de uren telt de reistijd van de ritten.
           </DialogDescription>
         </DialogHeader>
 

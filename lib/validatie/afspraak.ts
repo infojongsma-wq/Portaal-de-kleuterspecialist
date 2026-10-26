@@ -38,8 +38,8 @@ export interface SoortRegels {
 /**
  * Het afspraakformulier van de medewerker.
  *
- * Bij een training of observatie staan de uren en de reistijd hier bewust niet
- * in: die leidt de server af uit de activiteitsoort en de school. Wat de
+ * Bij een training of observatie staan de uren hier bewust niet in: die leidt
+ * de server af uit de activiteitsoort. Reistijd komt uit de ritten. Wat de
  * browser daarover zou meesturen wordt genegeerd, zodat een medewerker de
  * urenregistratie niet kan sturen.
  *
@@ -233,7 +233,7 @@ export const urenregelSchema = z.object({
       "inlezen_trainingen",
       "literatuur_lezen",
       "overleg",
-      "reistijd",
+      // Geen reistijd meer: die komt uit de ritten (SPEC.md 5.2).
       "overig",
     ],
     { message: "Kies een categorie." },

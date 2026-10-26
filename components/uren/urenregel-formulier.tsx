@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
  * Uren boeken en terugzien (SPEC.md 6.5).
  *
  * De lijst toont álle uren van de periode: de regels die automatisch uit de
- * afspraken volgen — op locatie, voorbereiding en de reistijd boven het uur —
+ * afspraken volgen — op locatie en voorbereiding —, de reistijd uit de ritten,
  * en de regels die de medewerker zelf boekt. Automatische regels zijn niet te
  * bewerken; die verander je door de afspraak zelf aan te passen.
  *
