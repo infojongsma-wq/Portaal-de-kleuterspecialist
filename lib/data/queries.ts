@@ -13,6 +13,11 @@ import {
   type UrenCategorie,
   type UrenregelInvoer,
 } from "@/lib/uren";
+import {
+  gedaneTrainingen,
+  type TrainingenVanMedewerker,
+} from "@/lib/trainingen/gedaan";
+import type { Trainingsboekhouding } from "./trainingen";
 import { werkset, type Werkset } from "./werkset";
 import type {
   Activiteitsoort,
@@ -713,4 +718,32 @@ export function urenVanAfspraakSync(
   telwijze: Telwijze = "gepland",
 ) {
   return urenVanAfspraakMet(instellingen, afspraak, telwijze);
+}
+
+// ---------------------------------------------------------------------------
+// Trainingen gedaan
+// ---------------------------------------------------------------------------
+
+/**
+ * Per medewerker de trainingen op school die als gedaan zijn afgevinkt, voor
+ * Beheer (SPEC.md 6.6). Wat bij de facturen en weekmails hoort, komt uit
+ * `trainingsboekhouding()` en wordt hier meegegeven.
+ */
+export async function haalGedaneTrainingen(
+  boekhouding: Pick<Trainingsboekhouding, "facturen" | "gemeld">,
+): Promise<TrainingenVanMedewerker[]> {
+  const gegevens = await werkset();
+  return gedaneTrainingen({
+    afspraken: gegevens.afspraken,
+    klanten: gegevens.klanten,
+    soorten: gegevens.activiteitsoorten,
+    medewerkers: gegevens.profielen.map((profiel) => ({
+      id: profiel.id,
+      naam: `${profiel.voornaam} ${profiel.achternaam}`.trim(),
+      actief: profiel.actief,
+      rol: profiel.rol,
+    })),
+    facturen: boekhouding.facturen,
+    gemeld: boekhouding.gemeld,
+  });
 }

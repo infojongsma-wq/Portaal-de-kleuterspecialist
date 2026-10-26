@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 
 import { werkset } from "@/lib/data/werkset";
+import { vandaagInNederland } from "@/lib/ritten/maand";
 import { supabaseBeheer } from "@/lib/supabase/beheer";
 import { supabaseServer } from "@/lib/supabase/server";
 import { afrondOpDecimalen } from "@/lib/uren";
+import { factuurVinkjeSchema } from "@/lib/validatie/factuur";
 import { medewerkerSchema } from "@/lib/validatie/medewerker";
 import { kilometervergoedingSchema, leesDecimaal } from "@/lib/validatie/rit";
 
@@ -525,4 +527,61 @@ export async function bewaarKilometervergoeding(
     melding:
       "Opgeslagen. Nieuwe ritten krijgen deze vergoeding; ritten die al zijn opgeslagen houden hun bedrag.",
   };
+}
+
+/**
+ * Het vinkje "Factuur verstuurd" bij een gedane training (SPEC.md 6.6).
+ * Alleen de registratie dat de beheerder de school een factuur heeft gestuurd;
+ * het portaal maakt zelf geen facturen (SPEC.md hoofdstuk 10).
+ */
+export async function zetFactuurVerstuurd(
+  invoer: unknown,
+): Promise<BeheerResultaat> {
+  const gecontroleerd = factuurVinkjeSchema.safeParse(invoer);
+  if (!gecontroleerd.success) {
+    return {
+      gelukt: false,
+      melding: gecontroleerd.error.issues[0]?.message ?? "Dat ging mis.",
+    };
+  }
+
+  const gegevens = await werkset();
+  if (gegevens.ik.rol !== "beheerder") {
+    return { gelukt: false, melding: "Alleen de beheerder kan dit wijzigen." };
+  }
+
+  const { afspraakId, verstuurd } = gecontroleerd.data;
+  const afspraak = gegevens.afspraken.find((a) => a.id === afspraakId);
+  if (!afspraak || afspraak.status !== "voltooid" || !afspraak.klantId) {
+    return {
+      gelukt: false,
+      melding:
+        "Deze training staat niet (meer) als gedaan. Ververs de pagina en probeer het opnieuw.",
+    };
+  }
+
+  const supabase = await supabaseServer();
+  const { error } = verstuurd
+    ? await supabase.from("verstuurde_facturen").upsert(
+        {
+          afspraak_id: afspraakId,
+          verstuurd_op: vandaagInNederland(),
+          vastgelegd_door: gegevens.ik.id,
+        },
+        { onConflict: "afspraak_id" },
+      )
+    : await supabase
+        .from("verstuurde_facturen")
+        .delete()
+        .eq("afspraak_id", afspraakId);
+
+  if (error) {
+    return {
+      gelukt: false,
+      melding: `Het vinkje kon niet worden opgeslagen. (${error.message})`,
+    };
+  }
+
+  revalidatePath("/beheer");
+  return { gelukt: true };
 }

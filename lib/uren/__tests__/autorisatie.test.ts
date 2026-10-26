@@ -19,6 +19,7 @@ describe("autorisatie: medewerker A versus medewerker B (SPEC.md 9.7)", () => {
   it.todo("medewerker A leest het contract van medewerker B niet");
   it.todo("medewerker A leest geen ritten van medewerker B");
   it.todo("medewerker A wijzigt of verwijdert geen ritten van medewerker B");
+  it.todo("een medewerker ziet of zet het vinkje Factuur verstuurd niet, ook niet bij een eigen training");
   it.todo("medewerker A zet geen rit op naam van medewerker B");
   it.todo("medewerker A heeft geen toegang tot het wijzigingslog");
   it.todo("de beheerder leest de afspraken, uren en ritten van beide medewerkers");

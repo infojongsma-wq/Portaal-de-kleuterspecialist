@@ -370,6 +370,23 @@ Nederlandse overheid, en lopen ook via de server.
 
 ---
 
+## Stap 4e — Trainingen gedaan, factuurvinkje en weekmail (jij, ±15 minuten)
+
+### 1. De SQL (±2 minuten)
+
+1. Open `supabase/migrations/20261026090000_trainingen_gedaan_en_weekmail.sql`
+   op GitHub en kopieer het met **Copy raw file**.
+2. Supabase → **SQL Editor** → **+ New query**. Plak het in dat lege venster.
+3. Klik op **Run**. Onderin hoort `Success. No rows returned` te staan. Twee
+   keer draaien kan geen kwaad.
+
+Dit maakt de plek voor het vinkje **Factuur verstuurd** en voor de weekmail.
+Alleen de beheerder kan erbij; een medewerker ziet het vinkje niet. In
+**Beheer** staat daarna bovenaan het blok **Trainingen gedaan**, met alles wat
+al als gedaan is afgevinkt. Opnieuw publiceren is niet nodig.
+
+---
+
 ## Stap 5 — Instellingen die nog kloppen moeten
 
 Voordat je echte uren gaat bijhouden:
@@ -439,6 +456,7 @@ Je portaal staat nu op een `vercel.app`-adres. Voor `portaal.dekleuterspecialist
 | Medewerkers uitnodigen per link of e-mail | gebouwd — zie stap 4b, eerst de migratie draaien |
 | Wekker tegen de pauzestand van Supabase | gebouwd — zie stap 4c |
 | Rittenregistratie (tabblad Ritten) | gebouwd — zie stap 4d, eerst de SQL draaien |
+| Trainingen gedaan met vinkje Factuur verstuurd (Beheer) | gebouwd — zie stap 4e, eerst de SQL draaien |
 | Tweestapsverificatie voor de beheerder | nog te bouwen |
 | Schoolvakanties invoeren in Beheer | nog te bouwen |
 | Instellingen wijzigen in Beheer | alleen de kilometervergoeding; de rest nog te lezen, niet te wijzigen |

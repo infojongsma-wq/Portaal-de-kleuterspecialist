@@ -5,6 +5,7 @@ import { KilometervergoedingInstelling } from "@/components/beheer/kilometerverg
 import { MedewerkersBeheer } from "@/components/beheer/medewerkers-beheer";
 import { RittenOverzicht } from "@/components/beheer/ritten-overzicht";
 import { SoortenBeheer } from "@/components/beheer/soorten-beheer";
+import { TrainingenGedaan } from "@/components/beheer/trainingen-gedaan";
 import { Voortgangsbalk } from "@/components/uren/voortgangsbalk";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
@@ -13,6 +14,7 @@ import {
   haalContract,
   haalContractVanJaar,
   haalContracten,
+  haalGedaneTrainingen,
   haalInstellingen,
   haalNietInzetbareDagen,
   haalProfielen,
@@ -27,6 +29,7 @@ import {
   naarIsoDatum,
 } from "@/lib/formatteer";
 import { rittenset } from "@/lib/data/ritten";
+import { trainingsboekhouding } from "@/lib/data/trainingen";
 import {
   isMaand,
   maandVan,
@@ -64,15 +67,24 @@ export default async function BeheerPagina({
     );
   }
 
-  const [ik, instellingen, profielen, nietInzetbareDagen, soorten, ritten] =
-    await Promise.all([
-      huidigeMedewerker(),
-      haalInstellingen(),
-      haalProfielen(),
-      haalNietInzetbareDagen(),
-      haalAlleActiviteitsoorten(),
-      rittenset(),
-    ]);
+  const [
+    ik,
+    instellingen,
+    profielen,
+    nietInzetbareDagen,
+    soorten,
+    ritten,
+    boekhouding,
+  ] = await Promise.all([
+    huidigeMedewerker(),
+    haalInstellingen(),
+    haalProfielen(),
+    haalNietInzetbareDagen(),
+    haalAlleActiviteitsoorten(),
+    rittenset(),
+    trainingsboekhouding(),
+  ]);
+  const trainingenGedaan = await haalGedaneTrainingen(boekhouding);
 
   // De maand van het ritten-overzicht; standaard de huidige.
   const dezeRitmaand = maandVan(vandaagInNederland());
@@ -129,7 +141,27 @@ export default async function BeheerPagina({
       titel="Beheer"
       omschrijving="Medewerkers, urenverantwoording en stamgegevens."
     >
-      <div className="grid gap-5">
+      <div className="grid grid-cols-1 gap-5">
+        {/* Trainingen gedaan */}
+        <Card id="trainingen" className="scroll-mt-20 p-0">
+          <CardHeader>
+            <CardTitle>Trainingen gedaan</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Per medewerker de trainingen en observaties op school die als
+              gedaan zijn afgevinkt, de nieuwste bovenaan. Vink aan wanneer je
+              de school de factuur hebt gestuurd. Alleen jij ziet dit vinkje.
+            </p>
+          </CardHeader>
+          {boekhouding.beschikbaar ? (
+            <TrainingenGedaan lijst={trainingenGedaan} />
+          ) : (
+            <p className="px-6 pb-6 text-sm text-muted-foreground">
+              Nog één stap: het vinkje Factuur verstuurd staat nog niet in de
+              database. Zie PUBLICEREN.md, stap 4e.
+            </p>
+          )}
+        </Card>
+
         {/* Urenverantwoording per medewerker */}
         {medewerkers.map(({ profiel, balans, contract, categorieen }) => {
           const totaalCategorieen = categorieen.reduce(

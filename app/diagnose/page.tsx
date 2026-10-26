@@ -39,6 +39,9 @@ const TABELLEN = [
   "niet_inzetbare_dagen",
   "instellingen",
   "ritten",
+  "verstuurde_facturen",
+  "weekmails",
+  "weekmail_trainingen",
 ] as const;
 
 interface Uitkomst {

@@ -66,6 +66,7 @@ Bouw de app zo dat deze twee als instelbare velden in het beheerdersportaal staa
 | Autorisatie | Row Level Security in Postgres |
 | Datumbewerking | `date-fns` met locale `nl` |
 | Afstanden | Google Maps Routes API, alleen vanaf de server; plaatsnamen en adressen voorstellen via de PDOK Locatieserver (5.7) |
+| E-mail | De weekmail (6.6) via de mailserver van het eigen domein (SMTP, `nodemailer`), alleen vanaf de server |
 | Formulieren | `react-hook-form` + `zod` |
 | Hosting | Vercel |
 | Domein | `portaal.dekleuterspecialist.nl` (CNAME bij Strato) |
@@ -343,6 +344,41 @@ vergoeding_per_km  numeric(5,3) not null          -- vastgelegd bij het opslaan
 
 **Waarschuwing in de UI bij `doel`:** dezelfde privacywaarschuwing als bij de vrije tekstvelden van een afspraak (4.6).
 
+### 4.12 `verstuurde_facturen`
+
+Bij welke gedane training de beheerder de school een factuur heeft gestuurd (6.6).
+
+```sql
+id               uuid primary key
+afspraak_id      uuid not null unique references afspraken(id) on delete cascade
+verstuurd_op     date not null                  -- de dag waarop het vinkje is gezet
+vastgelegd_door  uuid references profielen(id)
+```
+
+- Dit is alleen de registratie dát er een factuur is gestuurd. Het portaal maakt zelf geen facturen (hoofdstuk 10).
+- Alleen bij een afspraak op school met status `voltooid`. Uitvinken verwijdert de rij. Elke wijziging komt in het wijzigingslog (4.10).
+
+### 4.13 `weekmails` en `weekmail_trainingen`
+
+Welke weekmails er zijn verstuurd (6.6), en welke gedane trainingen daarin stonden.
+
+```sql
+-- weekmails
+id                 uuid primary key
+week               text not null                -- ISO-week, '2026-W44'
+automatisch        boolean not null             -- true: de vaste maandagmail; false: met de knop
+verzonden_op       timestamptz                  -- leeg zolang de mail onderweg is
+aantal_trainingen  integer not null default 0
+
+-- weekmail_trainingen
+id                 uuid primary key
+weekmail_id        uuid not null references weekmails(id) on delete cascade
+afspraak_id        uuid not null unique references afspraken(id) on delete cascade
+```
+
+- Hooguit één automatische weekmail per week: een unieke index op `week` waar `automatisch` waar is.
+- Een training staat hooguit één keer in een weekmail: `afspraak_id` is uniek. Wordt een training uitgevinkt en later opnieuw afgevinkt, dan komt hij niet nog eens in de mail.
+
 ---
 
 ## 5. Rekenregels
@@ -606,6 +642,10 @@ Voor de medewerker: eigen uren per week, maand en jaar. Voortgangsbalk richting 
 
 Alleen voor `beheerder`:
 
+- **Trainingen gedaan** — per medewerker de afspraken op school met status `voltooid`, de nieuwste bovenaan. Ook wat al was afgevinkt voordat dit blok bestond. Per regel: datum, school met plaats, titel met soort, en het vinkje **Factuur verstuurd** met de datum waarop het is gezet (4.12). Een knop **Nog geen factuur** toont alleen de trainingen zonder vinkje. Wat nog niet in een weekmail stond, heeft het label **Nieuw**. Alleen de beheerder ziet en zet het vinkje.
+- **Agenda medewerkers** (`/beheer/agenda`) — één FullCalendar met de afspraken van alle medewerkers, elke medewerker in een eigen kleur en per medewerker aan en uit te zetten. Klikken op een afspraak toont de details ernaast. Alleen bekijken: wijzigen doet de medewerker zelf, in de eigen agenda.
+- **Weekmail** — elke maandag om 08:00 Nederlandse tijd een mail naar het adres in de serverinstelling `WEEKMAIL_AAN`, met per medewerker de trainingen die sinds de vorige weekmail als gedaan zijn afgevinkt: datum, school met plaats en titel. De eerste weekmail bevat alles wat al was afgevinkt. Is er niets nieuws, dan gaat de mail toch, met die mededeling. De knop **Nu versturen** stuurt dezelfde mail meteen. In Beheer staat wanneer de laatste weekmail ging. De mail gaat via de mailserver van het eigen domein (3), niet via een aparte maildienst.
+  - *Tijdstip:* Vercel roept het adres op maandag twee keer aan, om 06:00 en 07:00 UTC; de mail gaat bij de aanroep waarbij het in Nederland tussen 08:00 en 09:00 is. Zo klopt het in zomer- en wintertijd. Op het gratis Vercel-abonnement komt een aanroep ergens binnen dat uur, dus tussen 08:00 en 09:00.
 - **Medewerkers** — profielen aanmaken, uitnodigen per e-mail, contract met uren per week en ingangsdatum vastleggen
 - **Urenverantwoording** — per medewerker en per periode: gepland versus gerealiseerd, saldo ten opzichte van de norm, uitsplitsing per categorie, grafiek met normlijn en werkelijke lijn
 - **Soorten afspraken** — per soort instellen of de uren vastliggen (op school: uren op locatie en voorbereiding) of dat de medewerker ze zelf invult (anders: onder welke urencategorie ze vallen en of ze meetellen als werktijd)
@@ -662,6 +702,8 @@ Op elke tabel RLS aanzetten. Basisregels:
 | `afspraken` | alleen waar `medewerker_id` = eigen profiel | alles |
 | `urenregels` | alleen waar `medewerker_id` = eigen profiel | alles |
 | `ritten` | alleen waar `medewerker_id` = eigen profiel | alles |
+| `verstuurde_facturen` | geen toegang | alles |
+| `weekmails`, `weekmail_trainingen` | geen toegang | alles |
 | `activiteitsoorten` | alleen lezen | alles |
 | `niet_inzetbare_dagen` | alleen lezen | alles |
 | `instellingen` | alleen lezen | alles |
@@ -675,7 +717,7 @@ Rol bepalen via een `security definer`-functie die `rol` uit `profielen` haalt o
 - TOTP verplicht voor `beheerder`
 - Sessieduur maximaal 12 uur
 - Alle schrijfacties via server actions, nooit rechtstreeks vanuit de browser met de service-key
-- De `service_role`-sleutel staat uitsluitend in serveromgevingsvariabelen, nooit in `NEXT_PUBLIC_*`
+- De `service_role`-sleutel staat uitsluitend in serveromgevingsvariabelen, nooit in `NEXT_PUBLIC_*`. Hij wordt alleen gebruikt om medewerkers uit te nodigen en voor de weekmail, die zonder ingelogde gebruiker draait. Het adres van de weekmail weigert elk verzoek zonder het geheim uit `CRON_SECRET`
 - HTTPS en HSTS afdwingen
 
 ---
@@ -709,6 +751,7 @@ Verplichte geautomatiseerde tests vóór fase 4 als afgerond geldt:
 7. **Autorisatietest:** medewerker A mag op geen enkele manier bij de afspraken of uren van medewerker B
 8. Afspraken 'anders' (5.1 en 5.3): zelf ingevulde uren tellen mee zonder voorbereiding en reistijd; Niet beschikbaar telt nergens mee, ook niet in de waarschuwing bij meer dan 12 uur
 9. Ritten (5.7): de km bij heen en terug, het bedrag per rit op centen, de voorbeeldmaand, en het terugvinden van een eerder gereden route in beide richtingen. De autorisatietest uit punt 7 geldt ook voor ritten
+10. Trainingen gedaan en weekmail (6.6): alleen afspraken op school met status `voltooid`, ook eerder afgevinkte; de weekmail bevat alleen wat nog niet gemeld is, en gaat alleen op maandag tussen 08:00 en 09:00 Nederlandse tijd, in zomer- en wintertijd. Een medewerker kan het factuurvinkje niet zien of zetten
 
 ---
 
@@ -716,7 +759,7 @@ Verplichte geautomatiseerde tests vóór fase 4 als afgerond geldt:
 
 - Verlof-, ziekte- en feestdagregistratie
 - Onkostendeclaratie. De rittenregistratie met kilometervergoeding zit er wél in (6.7)
-- Facturatie aan scholen
+- Facturatie aan scholen. Het vinkje **Factuur verstuurd** (6.6) zit er wél in: dat legt alleen vast dát er een factuur is gestuurd
 - Mobiele app of telefooninvoer
 - Koppeling met Outlook of Google Agenda
 - Meerdere organisaties in één installatie
