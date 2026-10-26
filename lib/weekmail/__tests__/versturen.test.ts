@@ -48,7 +48,11 @@ function namaakDatabase(tabellen: Record<string, Tabel>) {
 
     const uitvoeren = () => {
       if (actie === "invoegen") {
-        const rij = { id: `mail-${++volgnummer}`, ...nieuw, verzonden_op: null };
+        const rij: Record<string, unknown> = {
+          id: `mail-${++volgnummer}`,
+          ...nieuw,
+          verzonden_op: null,
+        };
         const dubbel =
           tabel === "weekmails" &&
           rij.automatisch === true &&
